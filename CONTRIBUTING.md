@@ -1,0 +1,26 @@
+# Contributing
+
+## Where the code and the knowledge come from
+
+This project is MIT licensed. To keep it that way:
+
+1. **Do not copy code** from projects whose license is not MIT-compatible, and do not
+   copy code from projects that have no license at all (no license means all rights
+   reserved). This includes decompiled code.
+2. **File formats are facts, code is not.** Describe a format in your own words in
+   `docs/formats/`, then implement it from that description.
+3. Mark every format note with its status: `draft` (unverified guess), `verified`
+   (checked against real files) or `unknown`.
+4. **No game assets in the repository**: no archives, textures, models or extracted
+   text. Tests build small synthetic inputs in code.
+
+## Before you open a pull request
+
+```
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cd web && npm test && npm run typecheck
+```
+
+CI runs the same checks on Linux and Windows.

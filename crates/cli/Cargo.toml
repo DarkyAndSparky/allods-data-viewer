@@ -1,0 +1,19 @@
+[package]
+name = "pakscope-cli"
+description = "Command line tool to inspect and extract game resources."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "pakscope"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+pakscope-core.workspace = true
+
+[lints]
+workspace = true

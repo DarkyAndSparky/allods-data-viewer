@@ -1,0 +1,18 @@
+# Rust
+/target/
+
+# Web
+node_modules/
+web/dist/
+
+# Never commit game assets or extracted files
+*.pak
+/samples/
+/extracted/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
