@@ -2,28 +2,25 @@
 
 use std::process::Command;
 
-fn pakscope() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_pakscope"))
+fn adv() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_adv"))
 }
 
 #[test]
 fn prints_version_line_without_arguments() {
-    let output = pakscope().output().expect("failed to run pakscope");
+    let output = adv().output().expect("failed to run adv");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.starts_with(&format!("pakscope {}", env!("CARGO_PKG_VERSION"))),
+        stdout.starts_with(&format!("Allods Data Viewer {}", env!("CARGO_PKG_VERSION"))),
         "unexpected output: {stdout}"
     );
 }
 
 #[test]
 fn version_flag_works() {
-    let output = pakscope()
-        .arg("--version")
-        .output()
-        .expect("failed to run pakscope");
+    let output = adv().arg("--version").output().expect("failed to run adv");
 
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains(env!("CARGO_PKG_VERSION")));
@@ -31,10 +28,10 @@ fn version_flag_works() {
 
 #[test]
 fn unknown_flag_fails() {
-    let output = pakscope()
+    let output = adv()
         .arg("--no-such-flag")
         .output()
-        .expect("failed to run pakscope");
+        .expect("failed to run adv");
 
     assert!(!output.status.success());
 }

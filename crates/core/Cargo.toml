@@ -1,5 +1,5 @@
 [package]
-name = "pakscope-core"
+name = "adv-core"
 description = "Readers for game resource formats (archives, localization, textures, models). No UI, no I/O policy."
 version.workspace = true
 edition.workspace = true

@@ -1,38 +1,46 @@
 # Roadmap
 
+Goal: one tool to browse, extract, convert and (into new archives) pack all data of the game client.
+
 | # | Milestone | Result |
 |---|---|---|
-| M0 | Skeleton | Cargo workspace, `web/`, tests, CI, license, docs |
-| M1 | Archives and localization | read `.pak` and `.loc`; CLI commands `list`, `extract`, `search` |
-| M2 | Textures | decode to PNG |
-| M3 | Models | export geometry to glTF, opens in Blender |
-| M4 | Materials | find out how a model refers to its textures, bind them, export glTF with textures |
-| M5 | Desktop app | Tauri window, file tree, text and texture preview |
-| M6 | 3D viewer | Three.js preview of models **with their textures applied** |
-| M7 | Skeletons and animations | |
+| M0 | Skeleton | Cargo workspace, `web/`, tests, CI, license, docs (done) |
+| M1 | Archives and localization | read `.pak` and both `.loc` layouts; CLI `list`, `extract`, `search` |
+| M2 | Textures | `.bin` texture to DDS and PNG |
+| M3 | Audio | open `.fsb` and `.bsb`, list streams, export WAV and MP3, batch export |
+| M4 | Video | extract `.ogv`, open in the system player |
+| M5 | Desktop app | Tauri window, file tree, text and texture preview, audio player, About dialog |
+| M6 | Resource databases | `.bin` databases to JSON/XML, version detection |
+| M7 | Models | export geometry to glTF |
+| M8 | Materials | find how a model refers to its textures, export glTF with textures |
+| M9 | 3D viewer | Three.js preview of models **with textures applied** |
+| M10 | Pack | write a **new** `.pak` from a folder (zlib layer, CRC32), never touching originals |
+| M11 | Skeletons and animations | |
 
-After M3 the project is already useful without any GUI.
+After M1 the tool is already useful without any GUI.
 
-## Textured models (M4 and M6)
+## Why this order
 
-The previous viewer showed only bare geometry. Showing a model with its textures
-needs one thing we do not know yet: **how a model refers to its materials and
-textures** (a material file, a name convention, or data inside the model).
-M4 is a research milestone for this and needs real sample files: a few models
-together with the files they use. The result is described in `docs/formats/`
-before any code is written. M6 then only has to feed the bound textures to Three.js.
+M1 to M4 need only formats we can verify from samples we already have
+(see [formats](formats/README.md)). M6 reuses the work documented by the MIT licensed
+reference project ([REFERENCES.md](REFERENCES.md)). Models and materials (M7, M8) need
+sample files and a research step: how a model refers to its materials and textures is
+still unknown.
 
 ## Backlog (ideas)
 
-- Full text search across all files
+- Full text search across all files and across localization keys
 - Hex view
 - Compare two client versions
-- Batch export
-- Localization browser and export
+- Localization browser, side by side Russian and English
+- In-app video playback (transcode or a decoder)
 - Plugin system for new formats
 - Browser build of the core via WebAssembly
 
 ## Out of scope
 
-- Modifying or repacking game files
+- Changing game files in place (packing always writes new files)
 - Redistributing game assets
+- Anything that circumvents the game's protections
+
+Note: replacing files inside a game client can break the game updater or its terms of service.

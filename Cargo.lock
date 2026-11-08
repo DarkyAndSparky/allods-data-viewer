@@ -3,6 +3,18 @@
 version = 4
 
 [[package]]
+name = "adv-cli"
+version = "0.0.1"
+dependencies = [
+ "adv-core",
+ "clap",
+]
+
+[[package]]
+name = "adv-core"
+version = "0.0.1"
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,18 +127,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "pakscope-cli"
-version = "0.0.1"
-dependencies = [
- "clap",
- "pakscope-core",
-]
-
-[[package]]
-name = "pakscope-core"
-version = "0.0.1"
 
 [[package]]
 name = "proc-macro2"

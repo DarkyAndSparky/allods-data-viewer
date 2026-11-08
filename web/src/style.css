@@ -1,0 +1,136 @@
+@font-face {
+  font-family: "Allods UI";
+  src:
+    local("AllodsWest"),
+    local("Allods-West"),
+    url("/fonts/Allods.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #16181d;
+  --panel: #1f2229;
+  --border: #3a3326;
+  --text: #ece4d2;
+  --muted: #a39a85;
+  --gold: #f0c86e;
+  --gold-strong: #ffb938;
+  --red: #b3261e;
+  --font-ui: "Allods UI", system-ui, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar img {
+  width: 32px;
+  height: 32px;
+}
+
+.topbar .title {
+  color: var(--gold);
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  margin-right: auto;
+}
+
+.btn {
+  font: inherit;
+  color: var(--text);
+  background: #2a2d36;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--gold-strong);
+  outline-offset: 2px;
+}
+
+main {
+  max-width: 44rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+a {
+  color: var(--gold);
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.about-logo {
+  display: block;
+  margin: 0 auto 0.5rem;
+  max-width: 100%;
+  height: auto;
+}
+
+.about-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  text-align: left;
+  margin: 1rem 0;
+}
+
+.about-facts dt {
+  color: var(--muted);
+}
+
+.about-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.about-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+}

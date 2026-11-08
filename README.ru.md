@@ -1,7 +1,9 @@
-# PakScope
+<p align="center"><img src="docs/assets/logo.png" alt="Allods Data Viewer" width="320"></p>
 
-Открытый просмотрщик и распаковщик ресурсов клиента MMORPG: архивы, локализация,
-текстуры и модели.
+# Allods Data Viewer
+
+Открытый просмотрщик, распаковщик и конвертер ресурсов клиента игры Allods Online:
+архивы, локализация, текстуры, звук, видео и модели.
 
 > Статус: **M0**, скелет проекта. План работ: [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -18,7 +20,7 @@
 | Путь | Что это |
 |---|---|
 | `crates/core` | библиотека на Rust с разбором форматов, без интерфейса |
-| `crates/cli` | консольная утилита `pakscope` |
+| `crates/cli` | консольная утилита `adv` |
 | `web/` | интерфейс на TypeScript (Vite), позже обернём в Tauri |
 | `docs/` | план, архитектура, описание форматов |
 
@@ -29,7 +31,7 @@
 
 ```
 cargo test --workspace
-cargo run -p pakscope-cli
+cargo run -p adv-cli
 
 cd web
 npm install
@@ -43,8 +45,9 @@ npm run build
 ресурсов игры и не будет, тестовые данные создаются прямо в тестах. Названия игры и
 компаний принадлежат их владельцам.
 
-Описание форматов подготовлено по результатам изучения работы
-[mrkriv/AODataViewer](https://github.com/mrkriv/AODataViewer). Код этого проекта не
-используется, правила в [CONTRIBUTING.md](CONTRIBUTING.md).
+Описания форматов получены из собственного анализа файлов и из проектов, перечисленных в
+[docs/REFERENCES.md](docs/REFERENCES.md). Код проектов, чья лицензия это запрещает, не копируется,
+правила в [CONTRIBUTING.md](CONTRIBUTING.md). «Allods Online» — товарный знак его владельцев;
+название используется только чтобы указать, с какой игрой работает программа.
 
 Лицензия [MIT](LICENSE).

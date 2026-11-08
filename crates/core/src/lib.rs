@@ -1,4 +1,4 @@
-//! PakScope core: readers for game resource formats.
+//! Allods Data Viewer core: readers for game resource formats.
 //!
 //! This crate contains no user interface and makes no assumptions about where
 //! data comes from. Everything is built so that the same code can run in the

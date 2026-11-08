@@ -1,5 +1,5 @@
 [package]
-name = "pakscope-cli"
+name = "adv-cli"
 description = "Command line tool to inspect and extract game resources."
 version.workspace = true
 edition.workspace = true
@@ -8,12 +8,12 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "pakscope"
+name = "adv"
 path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-pakscope-core.workspace = true
+adv-core.workspace = true
 
 [lints]
 workspace = true

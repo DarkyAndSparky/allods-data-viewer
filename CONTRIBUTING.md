@@ -4,9 +4,11 @@
 
 This project is MIT licensed. To keep it that way:
 
-1. **Do not copy code** from projects whose license is not MIT-compatible, and do not
-   copy code from projects that have no license at all (no license means all rights
-   reserved). This includes decompiled code.
+1. **Do not copy code** from projects whose license is not MIT-compatible (GPL, AGPL),
+   and do not copy code from projects that have no license at all (no license means all
+   rights reserved). This includes decompiled code. Code from MIT and Apache-2.0 projects
+   may be ported if the original copyright notice goes into `NOTICE`. See
+   [docs/REFERENCES.md](docs/REFERENCES.md) for the status of each project.
 2. **File formats are facts, code is not.** Describe a format in your own words in
    `docs/formats/`, then implement it from that description.
 3. Mark every format note with its status: `draft` (unverified guess), `verified`

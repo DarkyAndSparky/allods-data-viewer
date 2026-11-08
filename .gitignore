@@ -16,3 +16,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Proprietary font from the game client: use it locally, never commit it
+web/public/fonts/*
+!web/public/fonts/README.md

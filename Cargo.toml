@@ -7,11 +7,11 @@ version = "0.0.1"
 edition = "2024"
 rust-version = "1.97"
 license = "MIT"
-repository = "https://github.com/DarkyAndSparky/pakscope"
+repository = "https://github.com/DarkyAndSparky/allods-data-viewer"
 
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
-pakscope-core = { path = "crates/core" }
+adv-core = { path = "crates/core" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

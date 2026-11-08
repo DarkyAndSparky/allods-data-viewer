@@ -1,18 +1,18 @@
-//! `pakscope` command line tool.
+//! `adv` command line tool of Allods Data Viewer.
 
 use clap::Parser;
 
 /// Inspect and extract resources from game archives.
 #[derive(Parser)]
-#[command(name = "pakscope", version, about)]
+#[command(name = "adv", version, about)]
 struct Cli {}
 
 fn main() {
     let _cli = Cli::parse();
 
     println!(
-        "pakscope {} (core {})",
+        "Allods Data Viewer {} (core {})",
         env!("CARGO_PKG_VERSION"),
-        pakscope_core::version()
+        adv_core::version()
     );
 }
