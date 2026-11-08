@@ -25,7 +25,7 @@ archives, localization, textures and models.
 
 ## Build and test
 
-Requirements: [Rust](https://rustup.rs) (stable) and [Node.js](https://nodejs.org) 22 LTS or newer.
+Requirements: [Rust](https://rustup.rs) (stable, 1.97 or newer) and [Node.js](https://nodejs.org) (current LTS).
 On Windows Rust also needs the Microsoft C++ Build Tools.
 
 ```

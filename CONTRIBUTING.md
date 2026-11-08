@@ -14,6 +14,15 @@ This project is MIT licensed. To keep it that way:
 4. **No game assets in the repository**: no archives, textures, models or extracted
    text. Tests build small synthetic inputs in code.
 
+## Dependency policy
+
+- **Direct dependencies and tooling must be releases of the current calendar year**
+  (check the real release date on crates.io / npm before adding or bumping).
+- Transitive dependencies are whatever the newest compatible version is. A package
+  that had no release this year is accepted when it is the latest one.
+- `rust-version` follows a Rust release of the current year.
+- Dependabot opens weekly update pull requests for Cargo, npm and GitHub Actions.
+
 ## Before you open a pull request
 
 ```
