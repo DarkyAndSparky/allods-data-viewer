@@ -1,10 +1,10 @@
 # ADR-0003: Project name "Allods Data Viewer"
-Status: Accepted (trademark and logo rights open, see GAPS G-14)
+Status: Accepted (trademark risk remains, see GAPS G-14)
 Date: 2026-11-09
 Owner: maintainer
 
 ## Context
-The maintainer chose the name. "Allods" is a game trademark; the logo and icon were supplied by the maintainer.
+The maintainer chose the name. "Allods" is a game trademark; the logo and icon were created by the maintainer with an AI image generator (confirmed 2026-11-09); legal status of AI-generated images varies by country and generator terms.
 ## Decision
 Use the name, with a legal notice in README: unofficial fan tool, no affiliation, no game assets distributed.
 ## Alternatives considered
