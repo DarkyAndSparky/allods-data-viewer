@@ -11,7 +11,7 @@ repository = "https://github.com/DarkyAndSparky/allods-data-viewer"
 
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
-adv-core = { path = "crates/core" }
+adv-core = { path = "crates/core", version = "0.0.1" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -31,6 +31,8 @@ This project is MIT licensed. To keep it that way:
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+node scripts/check-repo.mjs
+cargo deny check
 cd web && npm test && npm run typecheck
 ```
 

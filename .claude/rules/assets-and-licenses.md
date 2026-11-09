@@ -1,0 +1,4 @@
+- Never add game data, extracted files, the game font or anything under `samples/` to the repository.
+- Do not copy code from AGPL/GPL projects or from projects without a license; see docs/REFERENCES.md.
+- MIT and Apache-2.0 code may be ported only with an entry in NOTICE.
+- Describe formats in your own words in docs/formats/ and mark the status of each claim.
