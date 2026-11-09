@@ -42,7 +42,7 @@
 
 **G-05.** Добавлены `deny.toml` (разрешённые лицензии: MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, MPL-2.0, CC0; запрещены неизвестные реестры и git-источники) и `.github/workflows/security.yml` (hygiene, `cargo deny`, `cargo audit`, `npm audit`, `npm audit signatures`, еженедельно). `cargo deny check` (0.20.2) прошёл: advisories, bans, licenses, sources ok; для этого в корневом `Cargo.toml` у `adv-core` указана версия. `cargo audit` и `npm audit` в песочнице не запускались. Версии инструментов проверены по crates.io: cargo-deny 0.20.2 (2026-07-09), cargo-audit 0.22.2 (2026-06-05). Если какая-то зависимость из плана не пройдёт список лицензий, решать вручную (symphonia MPL-2.0 в списке).
 
-**G-06.** `rust-toolchain.toml` закрепляет 1.97.0 (rustc 2026-07-07). При первом запуске rustup скачает его сам. В песочнице без сети файл мешает, поэтому проверки шли с `RUSTUP_TOOLCHAIN=stable`.
+**G-06.** `rust-toolchain.toml` закрепляет ветку 1.99 (вышла в октябре 2026; 1.97.0 была от 2026-07-07). На 1.99 в песочнице не собиралось: проверки выше шли на 1.97.0. При первом запуске rustup скачает его сам. В песочнице без сети файл мешает, поэтому проверки шли с `RUSTUP_TOOLCHAIN=stable`.
 
 **G-07.** `actions/checkout@v4`, `actions/setup-node@v4`, `Swatinem/rust-cache@v2`, `dtolnay/rust-toolchain@stable` взяты по памяти. Dependabot (уже включён для github-actions) предложит обновления; даты проверьте на странице релизов. Закрепление по SHA не сделано.
 

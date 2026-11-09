@@ -27,7 +27,7 @@ archives, localization, textures, audio, video and models.
 
 ## Build and test
 
-Requirements: [Rust](https://rustup.rs) (stable, 1.97 or newer) and [Node.js](https://nodejs.org) (current LTS).
+Requirements: [Rust](https://rustup.rs) (stable, 1.99 or newer) and [Node.js](https://nodejs.org) (current LTS).
 On Windows Rust also needs the Microsoft C++ Build Tools.
 
 ```

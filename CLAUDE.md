@@ -9,7 +9,7 @@ Formats are described in `docs/formats/`; read the note before touching a reader
 
 ## Project facts
 
-- Stack: Rust 1.97 (edition 2024), workspace `crates/core` (adv-core), `crates/cli` (adv-cli); `web/` (Vite + TypeScript).
+- Stack: Rust 1.99 (edition 2024), workspace `crates/core` (adv-core), `crates/cli` (adv-cli); `web/` (Vite + TypeScript).
 - Checks (all must pass before you say "done"):
   - `cargo fmt --all --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`

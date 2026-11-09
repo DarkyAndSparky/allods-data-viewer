@@ -26,7 +26,7 @@
 
 ## Сборка и тесты
 
-Нужны [Rust](https://rustup.rs) (stable, 1.97 или новее) и [Node.js](https://nodejs.org) (текущая LTS).
+Нужны [Rust](https://rustup.rs) (stable, 1.99 или новее) и [Node.js](https://nodejs.org) (текущая LTS).
 В Windows для Rust также нужны Microsoft C++ Build Tools.
 
 ```
