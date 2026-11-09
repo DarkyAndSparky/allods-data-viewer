@@ -1,5 +1,7 @@
 # Roadmap
 
+Short table below. Full plan with scope, acceptance criteria and risks per milestone (Russian): [ROADMAP-DETAILED.md](ROADMAP-DETAILED.md).
+
 Goal: one tool to browse, extract, convert and (into new archives) pack all data of the game client.
 
 | # | Milestone | Result |
