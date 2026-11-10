@@ -42,21 +42,35 @@ three files hold different client versions and different content.
 
 ## Layout 2 (64 bit)
 
-**Status: draft.** Seen in `pack.rus.loc` and `pack.eng_eu.loc` (about 45 MB each when
-inflated), the two files are parallel (same structure, Russian and English text).
+**Status: verified (structure), keys unknown.** Checked on 2026-11-10 against four real
+files from two client versions: `pack.rus.loc` and `pack.eng_eu.loc` from a current
+`Texts_x64.pak` and the same two names from an older "new format" pack. For every item of
+all four files the text ends with a UTF-16 NUL exactly where the descriptor says, and the
+last text ends exactly at the end of the file.
 
-The payload starts with 64 bit little endian words:
+The payload (after the zlib layer) is a memory image. All numbers are 64 bit little endian.
 
-```
-0x162E0F62, 566294, then pairs (n, offset): (9,16) (15,40) (6,72) (6,72) ...
-```
+| Where | Meaning |
+|---|---|
+| 0 | `magic`: `0x2689119F` (current client) or `0x162E0F62` (older client). Differs per client version; layout is the same in both. |
+| 8 | `words`: number of 64 bit words in the descriptor table. `items = words / 2` (555 862 words, 277 431 items now; 566 294 and 283 147 in the older version). |
+| 16 | `items` descriptors of 16 bytes: `length` (u64, UTF-16 units without the terminator) and `offset` (u64). |
+| 16 + 16*items | 12 bytes of unknown purpose (u32 = 1, then a u64 that looks like a pointer into the file). |
+| 16 + 16*items + 12 = `base` | Start of the string area. |
 
-The first word is a magic number and the second is probably the item count
-(identical in both files). The pairs that follow look like (length, position)
-descriptors and are not decoded yet. Next step: decode them against the file body.
+Text of item `i`: `length` UTF-16LE units at file position `base + offset`, followed by
+a 2 byte NUL. Strings are 8 byte aligned and **deduplicated**: equal texts share one
+offset (194 816 distinct texts for 277 431 items in the current Russian file).
+
+**There are no keys in this layout.** Items are addressed by index; the key (resource
+name) must come from the resource database (`pack.bin`), which we do not have yet.
+Layout 1 stores keys next to the texts; layout 2 does not.
+
+Reading (checked arithmetic everywhere): require `words` even, `16 + 8*words + 12 <= len`,
+and for each item `base + offset + 2*length + 2 <= len`.
 
 ## Open questions
 
-- Layout 2: what the descriptors mean and where keys and texts are stored.
+- Layout 2: the 12 bytes after the descriptor table; how item indexes map to resource names (needs `pack.bin`).
 - Which client versions use which layout.
 - The meaning of the duplicate key.

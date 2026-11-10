@@ -1,20 +1,32 @@
 # Audio and video
 
-**Status: draft.** Derived from a third party batch kit (only its scripts were read) and
-from the file listing of a video archive.
+**Status: audio container verified, codec details partly verified; video verified.**
+Checked on 2026-11-10 with real `.bsb`, `.fsb` and `.ogv` files.
 
 ## Audio banks
 
-- Sounds are packed with FMOD in `.fsb` (FMOD sample bank) and `.bsb` files.
-- A `.bsb` is a **zlib stream**. After inflating, the first 4 bytes are dropped and the
-  rest is a normal `.fsb` file.
-- The kit then decodes the streams of the `.fsb` (they end up as Ogg Vorbis files in its
-  workflow), converts Ogg to WAV and WAV to MP3 with `lame`. The step that cuts streams
-  out of the `.fsb` is done by another tool that the kit does not contain.
-
-To do: identify the FSB version and codec from real samples, then write the reader.
+- A `.bsb` is a **zlib stream**. After inflating, the first 4 bytes are a u32 with the
+  length of what follows (verified: 0x640 = 1600 for a 1600 byte file); the rest is a
+  normal `.fsb`. Verified on two files.
+- The `.fsb` files are **FSB5** (magic `FSB5`, version field 1). Header (60 bytes):
+  magic, version, number of samples, size of the sample header table, size of the name
+  table, size of the data, codec mode, 8 zero bytes, 16 byte hash, 8 bytes. Observed
+  **codec mode 15 = Vorbis** in every checked file (a 7.4 MB music bank and two sound
+  banks); total size = 60 + headers + names + data matched the file size exactly.
+- Each sample has a 64 bit header: bit 0 "extra chunks follow", bits 1-4 frequency index
+  (index 9 seen = 48 000 Hz), bit 5 stereo, bits 6-33 data offset in units of 32 bytes,
+  bits 34+ sample count. Extra chunks (u32: bit 0 more, bits 1-24 size, bits 25+ type)
+  seen: type 1 (1 byte, channel/flag), type 8 (1 byte, unknown), type 11 (Vorbis data:
+  a u32 CRC32 followed by seek data).
+- **Open problem:** FMOD stores Vorbis without the Vorbis setup header; the CRC in chunk
+  11 selects a setup (codebooks) from a table known to FMOD. Decoding or converting needs
+  that table. We have not found a licence-clean source for it yet; until then export of
+  the raw `.fsb` and of the stream list is possible, WAV/OGG/MP3 is not.
+- The batch kit (`BSBtoFSB`) only inflates and strips 4 bytes; decoding there is done by
+  other external tools.
 
 ## Video
 
-- `.ogv` files (Ogg container) stored uncompressed in a video archive. Codecs are
-  presumably Theora and Vorbis, to be confirmed with a sample.
+- `.ogv` files are Ogg containers stored uncompressed (zip method 0) in `Video.pak`.
+- Verified on two files: each has **one Theora stream and no audio stream**. Header:
+  Theora 3.2.1, frame 1280 x 720, 30000/1001 (29.97) frames per second.
