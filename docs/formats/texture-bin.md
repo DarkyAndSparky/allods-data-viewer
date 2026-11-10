@@ -1,6 +1,6 @@
 # Textures stored as `.bin`
 
-**Status: draft, container verified.** The container was checked on 2026-11-10 against
+**Status: draft, container verified; DXT5 decoding checked visually on one real texture (0.1.3).** The container was checked on 2026-11-10 against
 about 80 real files (`Texture`, `UITexture`, `.hi.bin`); pixel data was decoded for one
 file. Width, height and pixel format are still not in the file.
 
@@ -23,6 +23,7 @@ file. Width, height and pixel format are still not in the file.
 - The resource kind is part of the **file name**: `X.(Texture).bin`, `X.(UITexture).bin`,
   `X.(Geometry).bin`, `X.(SkeletalAnimation).bin`, `X.(CollisionMesh).bin`,
   `X.(AttributeAnimation).bin`. Reading the name is therefore enough to choose a decoder.
+- `adv tex convert` (0.1.3) takes `--size` and `--dxt`; the level size must match exactly or it refuses. Checked on `Creatures/Placeholders/AstralDemon.(Texture).bin`: 4096 bytes at mip 2 gives a coherent picture only as 256x256 DXT5 (the DXT1 reading gives garbage), so format guesses are easy to tell apart by eye.
 - To get a `.dds`: write a DDS header (FourCC, sizes) and the levels largest first.
 
 Other texture related files seen: `.tga` (uncompressed, standard header), `.cur` cursors.

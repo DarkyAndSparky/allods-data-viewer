@@ -7,8 +7,17 @@
 //! Supported formats are documented in `docs/formats/`.
 
 pub mod error;
+pub mod extract;
+pub mod limits;
+pub mod loc;
+pub mod pak;
+pub mod texture;
+pub mod vpath;
 
 pub use error::{Error, Result};
+pub use limits::Limits;
+pub use pak::{Entry, Layer, Method, PakArchive};
+pub use vpath::VPath;
 
 /// Version of the core library, taken from `Cargo.toml`.
 #[must_use]

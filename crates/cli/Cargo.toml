@@ -14,6 +14,11 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 adv-core.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
+zip.workspace = true

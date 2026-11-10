@@ -1,0 +1,25 @@
+name: Gitleaks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * 1"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Personal account: no license key needed. For an organization account a free
+      # GITLEAKS_LICENSE secret is required (see the action's README).
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

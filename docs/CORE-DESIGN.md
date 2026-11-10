@@ -120,7 +120,7 @@ pub trait Progress: Sync {
 | Модуль | Этап | Состояние |
 | --- | --- | --- |
 | `error` | M0 | готово |
-| `vfs`, `archive/pak` | M1 | не начато |
+| `pak`, `extract`, `vpath`, `limits`, `loc` | M1 | готово в 0.1.1 (плоская раскладка `crates/core/src/*.rs`; `vfs` с несколькими паками и `detect` ещё нет) |
 | `formats/loc/v1` | M1 | описание проверено, кода нет |
 | `formats/loc/v2` | M1 | описание черновое, нужна расшифровка |
 | `codec/dxt`, `formats/texture` | M2 | не начато, ждёт образцов |
