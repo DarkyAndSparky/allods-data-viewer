@@ -18,10 +18,11 @@ Checked on 2026-11-10 with real `.bsb`, `.fsb` and `.ogv` files.
   bits 34+ sample count. Extra chunks (u32: bit 0 more, bits 1-24 size, bits 25+ type)
   seen: type 1 (1 byte, channel/flag), type 8 (1 byte, unknown), type 11 (Vorbis data:
   a u32 CRC32 followed by seek data).
-- **Open problem:** FMOD stores Vorbis without the Vorbis setup header; the CRC in chunk
+- **Decoding verified (2026-11-10):** `vgmstream-cli` (source of 2026-11-05, ISC licence, built on Linux with libvorbis) decodes our files: `Music_Zone_Jigran.fsb` (2 streams, 4 channels, 48 kHz, 1:58.957, name `Jigran_Town_Adaptive`) and a bank cut from `Ambience_AD05.bsb` (2 streams `chainshake01/02`, stereo). Chunk type 1 is the channel count (4 in the music bank). Output WAVs had plausible non-silent samples; not listened to.
+- **Why decoding is not trivial:** FMOD stores Vorbis without the Vorbis setup header; the CRC in chunk
   11 selects a setup (codebooks) from a table known to FMOD. Decoding or converting needs
-  that table. We have not found a licence-clean source for it yet; until then export of
-  the raw `.fsb` and of the stream list is possible, WAV/OGG/MP3 is not.
+  that table. The table lives inside vgmstream; we do not copy it, we call vgmstream as an
+  external program (see DECISIONS D-014).
 - The batch kit (`BSBtoFSB`) only inflates and strips 4 bytes; decoding there is done by
   other external tools.
 
