@@ -4,6 +4,12 @@ all-features = true
 
 [advisories]
 version = 2
+# proc-macro-error is an unmaintained build-time proc-macro. It comes only from the gtk-rs 0.18
+# bindings that Tauri 2 uses on Linux (not compiled on Windows). Remove this entry when Tauri
+# moves to newer gtk-rs. Reviewed 2026-11-14.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "unmaintained proc-macro via gtk-rs 0.18 (Tauri on Linux only)" },
+]
 
 [licenses]
 version = 2

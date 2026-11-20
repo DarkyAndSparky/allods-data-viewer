@@ -134,3 +134,499 @@ dialog::backdrop {
   font-size: 0.85rem;
   text-align: left;
 }
+
+/* Browser layout: tree on the left, preview on the right. */
+html,
+body,
+#app {
+  height: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar .pathbox {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 8rem;
+}
+
+.topbar .path {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+}
+
+.topbar .title {
+  margin-right: 0;
+}
+
+select {
+  font: inherit;
+  color: var(--text);
+  background: #2a2d36;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+}
+
+main.split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--side-w, 360px) 6px 1fr;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+.side {
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  padding: 0.5rem;
+}
+
+.view {
+  overflow: auto;
+  padding: 1rem 1.5rem;
+}
+
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.6rem;
+}
+
+.tree > ul {
+  padding-left: 0;
+}
+
+.tree .root {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.node {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 0.2rem;
+  cursor: pointer;
+}
+
+.node:hover {
+  background: #2a2d36;
+}
+
+.node.selected {
+  background: #3a3326;
+  color: var(--gold);
+}
+
+.node:focus-visible {
+  outline: 2px solid var(--gold-strong);
+}
+
+.node.dir .name {
+  color: var(--gold);
+}
+
+.node .twisty {
+  width: 1rem;
+  flex: none;
+  color: var(--muted);
+}
+
+.node .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results .node .name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.meta,
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.meta {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.error {
+  background: #3a1d1b;
+  border-bottom: 1px solid var(--red);
+  padding: 0.5rem 1rem;
+}
+
+.error[hidden] {
+  display: none;
+}
+
+.error code {
+  display: block;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.file-title {
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+
+pre.text {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.picture {
+  display: block;
+  max-width: 100%;
+  margin: 0.75rem auto 0;
+  image-rendering: pixelated;
+  background:
+    repeating-conic-gradient(#2a2d36 0% 25%, #1f2229 0% 50%) 50% / 16px 16px;
+  border: 1px solid var(--border);
+}
+
+.stream {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+audio {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.stage {
+  height: min(60vh, 34rem);
+  min-height: 16rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.stage canvas {
+  display: block;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.search {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.results .node {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.results .meta {
+  margin-left: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.results[hidden],
+.tree[hidden] {
+  display: none;
+}
+
+.notice {
+  background: #1f3322;
+  border-bottom: 1px solid #3f7a4a;
+  padding: 0.4rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.notice[hidden] {
+  display: none;
+}
+
+.view .toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.filters .field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.filters .lbl {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.filters select {
+  min-width: 0;
+}
+
+main.split.collapsed {
+  grid-template-columns: 0 14px 1fr;
+}
+
+main.split.collapsed .side {
+  display: none;
+}
+
+.splitter {
+  position: relative;
+  cursor: col-resize;
+  background: var(--border);
+  touch-action: none;
+}
+
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--gold);
+  outline: none;
+}
+
+main.split.collapsed .splitter {
+  cursor: default;
+}
+
+.split-toggle {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 36px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+main.split > .side {
+  grid-column: 1;
+}
+
+main.split > .splitter {
+  grid-column: 2;
+}
+
+main.split > .view {
+  grid-column: 3;
+}
+
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  padding: 0.35rem 0.8rem;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.statusbar .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  font: inherit;
+  color: var(--text);
+  background: #2a2d36;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.65rem;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip.active {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.chip.active {
+  background: #3a3326;
+}
+
+.btn.big {
+  margin-top: 1rem;
+  padding: 0.6rem 1.6rem;
+  font-size: 1.1rem;
+}
+
+details.note summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.side .check { display: flex; gap: 6px; align-items: center; padding: 2px 0 6px; font-size: 12px; color: var(--muted, #888); }
+.results .group { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #888); }
+.node .snippet { display: block; grid-column: 1 / -1; font-size: 12px; color: var(--muted, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.loc-filter { min-width: 260px; }
+.loc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.loc-table th, .loc-table td { text-align: left; vertical-align: top; padding: 3px 8px; border-bottom: 1px solid var(--border, #3333); }
+.loc-table .loc-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.loc-table tr.focus { outline: 2px solid var(--accent, #4a8); background: var(--accent-bg, #4a82); }
+
+.sidehead {
+  position: sticky;
+  top: -0.5rem;
+  z-index: 2;
+  margin: -0.5rem -0.5rem 0.5rem;
+  padding: 0.5rem 0.5rem 0.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.chip.fold {
+  padding: 0 0.5rem;
+  line-height: 1.2;
+}
+
+.suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 14rem;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
+.suggest[hidden] {
+  display: none;
+}
+
+.suggest-item {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.suggest-item:hover,
+.suggest-item:focus-visible {
+  background: #2a2d36;
+  color: var(--gold);
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.crumb {
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0 0.2rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.crumb:hover,
+.crumb:focus-visible {
+  color: var(--gold);
+  background: #2a2d36;
+}
+
+.crumb[aria-current="page"] {
+  color: var(--gold);
+}
+
+.crumbs .sep {
+  color: var(--muted);
+}
+
+.folder-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.folder-list .node {
+  width: 100%;
+}

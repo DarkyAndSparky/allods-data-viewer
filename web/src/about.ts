@@ -29,7 +29,6 @@ export function renderAbout(info: AboutInfo): string {
       <dt>${escapeHtml(t(lang, "license"))}</dt><dd>${escapeHtml(t(lang, "licenseValue"))}</dd>
       <dt>${escapeHtml(t(lang, "source"))}</dt><dd><a href="${escapeHtml(info.repoUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(info.repoUrl)}</a></dd>
     </dl>
-    <p class="about-note">${escapeHtml(t(lang, "formats"))}</p>
     <p class="about-note">${escapeHtml(t(lang, "legal"))}</p>
     <form method="dialog"><button class="btn">${escapeHtml(t(lang, "close"))}</button></form>
   `;

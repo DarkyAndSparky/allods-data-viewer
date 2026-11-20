@@ -1,8 +1,11 @@
 //! `adv` command line tool of Allods Data Viewer.
 
+use adv_core::db::{Database, inflate_db, parse_db};
 use adv_core::extract::{ExtractOptions, Outcome, extract_entry};
+use adv_core::fsb::{parse_bank, unwrap_bank};
 use adv_core::loc::{LocFile, LocItem, read_loc};
 use adv_core::texture::{Dxt, Level, decode_dxt, level_dims, read_levels, write_dds, write_png};
+use adv_core::xdb::TextureDesc;
 use adv_core::{Entry, Layer, Limits, PakArchive};
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -28,6 +31,17 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Show the directory tree of a `.pak` archive with file counts and guessed file kinds.
+    Tree {
+        /// Archive to show.
+        pak: PathBuf,
+        /// Start at this directory (use `/` between names).
+        #[arg(long, default_value = "")]
+        dir: String,
+        /// How many directory levels to print.
+        #[arg(long, default_value_t = 2)]
+        depth: usize,
+    },
     /// List the entries of a `.pak` archive.
     List {
         /// Archive to list.
@@ -49,6 +63,26 @@ enum Command {
     Verify {
         /// Archive or folder.
         path: PathBuf,
+    },
+    /// List the blobs (id, offset, size) of a geometry, animation or map chunk file.
+    Blobs {
+        /// File (zlib compressed or already inflated).
+        file: PathBuf,
+    },
+    /// Read model geometry (`X.(Geometry).bin`): info and OBJ export.
+    Geom {
+        #[command(subcommand)]
+        command: GeomCommand,
+    },
+    /// Inspect resource databases (`pack.bin` and similar, 64-bit V2 layout).
+    Db {
+        #[command(subcommand)]
+        command: DbCommand,
+    },
+    /// Inspect and export sound banks (`.fsb`, `.bsb`).
+    Audio {
+        #[command(subcommand)]
+        command: AudioCommand,
     },
     /// Inspect and convert texture `.bin` files.
     Tex {
@@ -96,6 +130,107 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum GeomCommand {
+    /// Show vertex and triangle counts and the guessed vertex size.
+    Info {
+        /// Geometry `.bin` file (zlib compressed or already inflated).
+        file: PathBuf,
+        /// Vertex size in bytes instead of the guess (24, 28, 32 or 36).
+        #[arg(long)]
+        stride: Option<usize>,
+    },
+    /// Write the mesh as a binary glTF 2.0 file (`.glb`): positions, UVs, triangles.
+    Glb {
+        /// Geometry `.bin` file (zlib compressed or already inflated).
+        file: PathBuf,
+        /// Output `.glb` file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Vertex size in bytes instead of the guess (24, 28, 32 or 36).
+        #[arg(long)]
+        stride: Option<usize>,
+        /// A `.(SkeletalAnimation).bin` clip of the same model to add as a glTF animation.
+        #[arg(long)]
+        anim: Option<PathBuf>,
+    },
+    /// Write the mesh as Wavefront OBJ (positions, UVs, triangles).
+    Obj {
+        /// Geometry `.bin` file (zlib compressed or already inflated).
+        file: PathBuf,
+        /// Output `.obj` file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Vertex size in bytes instead of the guess (24, 28, 32 or 36).
+        #[arg(long)]
+        stride: Option<usize>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DbCommand {
+    /// Show version, struct types and sizes of a database.
+    Info {
+        /// Database file (zlib compressed `.bin`).
+        file: PathBuf,
+    },
+    /// List the `.pak` files the database refers to.
+    Packs {
+        /// Database file (zlib compressed `.bin`).
+        file: PathBuf,
+    },
+    /// Find resource databases inside `.pak` files by their signature.
+    Find {
+        /// Folder with `.pak` files (not recursive) or single `.pak` files.
+        paths: Vec<PathBuf>,
+        /// Copy the databases found to this folder, one subfolder per pak.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List the `Texture` objects (type, size, mips); `--json` for a document.
+    Textures {
+        /// Database file (zlib compressed `.bin`).
+        file: PathBuf,
+        /// Only named textures matching this pattern (`*` matches any characters).
+        #[arg(long)]
+        filter: Option<String>,
+        /// Print one JSON document.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the named resources of a database with their database ids.
+    List {
+        /// Database file (zlib compressed `.bin`).
+        file: PathBuf,
+        /// Only names matching this pattern (`*` matches any characters).
+        #[arg(long)]
+        filter: Option<String>,
+        /// Print one JSON document.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AudioCommand {
+    /// List the streams of a bank: name, rate, channels, duration.
+    List {
+        /// A `.fsb` or `.bsb` file.
+        file: PathBuf,
+    },
+    /// Decode all streams to WAV (built-in Vorbis decoder; `--vgmstream` uses an external tool).
+    Export {
+        /// A `.fsb` or `.bsb` file.
+        file: PathBuf,
+        /// Output folder.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Use this `vgmstream-cli` instead of the built-in decoder (also `ADV_VGMSTREAM`).
+        #[arg(long)]
+        vgmstream: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum TexCommand {
     /// Show the mip levels stored in a texture `.bin` (and its `.hi.bin`, if present).
     Info {
@@ -107,12 +242,28 @@ enum TexCommand {
     Convert {
         /// Texture file, usually `Name.(Texture).bin`.
         file: PathBuf,
-        /// Size of mip level 0, for example `512x512`.
+        /// Size of mip level 0, for example `512x512`. Default: read from the `.xdb` next to the file.
         #[arg(long)]
-        size: String,
-        /// Block format: 1, 3 or 5 (DXT1, DXT3, DXT5).
+        size: Option<String>,
+        /// Block format: 1, 3 or 5 (DXT1, DXT3, DXT5). Default: read from the `.xdb`.
         #[arg(long)]
-        dxt: u8,
+        dxt: Option<u8>,
+        /// Read size and format from this resource database (`pack.bin`) instead of an `.xdb`;
+        /// the texture is found by file name, or by `--db-id`.
+        #[arg(long)]
+        db: Option<PathBuf>,
+        /// Database id of the texture inside `--db` (see `adv db textures`).
+        #[arg(long, requires = "db")]
+        db_id: Option<u64>,
+        /// Community size list (`textures_database.bin`) used when the size has to be guessed.
+        #[arg(long)]
+        tdb: Option<PathBuf>,
+        /// Pick another candidate size from the guess (see `adv tex info`), counting from 0.
+        #[arg(long)]
+        index: Option<usize>,
+        /// Cut a PNG to the used picture (`realWidth` x `realHeight` from the `.xdb`).
+        #[arg(long)]
+        crop: bool,
         /// `png` (one level) or `dds` (all levels).
         #[arg(long, default_value = "png")]
         format: String,
@@ -222,6 +373,128 @@ fn load_texture(path: &Path) -> Result<Vec<Level>, String> {
     Ok(levels)
 }
 
+/// Reads the `.xdb` that belongs to a texture `.bin` (same name, `.hi` removed).
+fn load_desc(bin: &Path) -> Result<TextureDesc, String> {
+    let name = bin.to_string_lossy();
+    let stem = name
+        .strip_suffix(".bin")
+        .ok_or("the texture file must end with .bin to find its .xdb; give --size and --dxt")?;
+    let stem = stem.strip_suffix(".hi").unwrap_or(stem);
+    let xdb = PathBuf::from(format!("{stem}.xdb"));
+    let text = std::fs::read_to_string(&xdb)
+        .map_err(|e| format!("{}: {e}. Give --size and --dxt instead", xdb.display()))?;
+    TextureDesc::parse(&text).map_err(|e| format!("{}: {e}", xdb.display()))
+}
+
+/// Guesses a description from the data alone (and the optional community list).
+fn guess_desc(
+    file: &Path,
+    levels: &[Level],
+    tdb: Option<&Path>,
+    index: Option<usize>,
+    dxt: Option<u8>,
+) -> Option<TextureDesc> {
+    let forced = match dxt {
+        Some(1) => Some(Dxt::Dxt1),
+        Some(3) => Some(Dxt::Dxt3),
+        Some(5) => Some(Dxt::Dxt5),
+        _ => None,
+    };
+    let entry = tdb.and_then(|p| {
+        let f = File::open(p).ok()?;
+        let raw = inflate_db(BufReader::new(f), &Limits::default()).ok()?;
+        adv_core::tdb::Tdb::parse(&raw)
+            .ok()?
+            .find(&file.to_string_lossy())
+    });
+    let mut g = adv_core::texheur::guess(levels, forced.or(entry.and_then(|e| e.format)))?;
+    if let Some(i) = index.or(entry.map(|e| usize::from(e.index))) {
+        g.index = i.min(g.candidates.len() - 1);
+    }
+    let (w, h) = g.size();
+    let (pw, ph) = entry.map_or((0, 0), |e| (u32::from(e.pad_w), u32::from(e.pad_h)));
+    eprintln!(
+        "note: no .xdb or database: size {w}x{h} {:?} is a guess{} (other candidates: {})",
+        g.format,
+        if entry.is_some() {
+            " from the community list"
+        } else {
+            ""
+        },
+        g.candidates
+            .iter()
+            .map(|(a, b)| format!("{a}x{b}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    Some(TextureDesc {
+        width: w,
+        height: h,
+        real_width: w.saturating_sub(pw).max(1),
+        real_height: h.saturating_sub(ph).max(1),
+        format: g.format,
+        mips: levels.len() as u32,
+    })
+}
+
+/// Builds a texture description from a resource database: by id, or by the file name.
+fn desc_from_db(db_path: &Path, bin: &Path, id: Option<u64>) -> Result<TextureDesc, String> {
+    let (payload, db) = load_db(db_path)?;
+    let types = db.type_tags(&payload);
+    let id = match id {
+        Some(id) => id,
+        None => {
+            let base = bin
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let base = base.strip_suffix(".bin").unwrap_or(&base);
+            let base = base.strip_suffix(".hi").unwrap_or(base);
+            let base = base.strip_suffix(".(Texture)").unwrap_or(base);
+            let hits: Vec<u64> = db
+                .files
+                .iter()
+                .filter(|f| types.get(&f.db_id) == Some(&"Texture"))
+                .filter(|f| {
+                    let n = f.name.rsplit('/').next().unwrap_or(&f.name);
+                    n.strip_suffix(".(Texture).xdb") == Some(base)
+                })
+                .map(|f| f.db_id)
+                .collect();
+            match hits.as_slice() {
+                [one] => *one,
+                [] => {
+                    return Err(format!(
+                        "no texture named {base:?} in {}",
+                        db_path.display()
+                    ));
+                }
+                _ => return Err(format!("several textures named {base:?}; give --db-id")),
+            }
+        }
+    };
+    if types.get(&id) != Some(&"Texture") {
+        return Err(format!("object {id} is not a Texture"));
+    }
+    let r = db
+        .texture_record(&payload, id)
+        .ok_or("texture object is outside the data image")?;
+    let format = match r.kind {
+        0 => Dxt::Dxt1,
+        1 => Dxt::Dxt3,
+        2 => Dxt::Dxt5,
+        k => return Err(format!("texture type {k} is not a DXT format")),
+    };
+    Ok(TextureDesc {
+        width: r.width,
+        height: r.height,
+        real_width: r.width,
+        real_height: r.height,
+        format,
+        mips: r.mips,
+    })
+}
+
 fn parse_size(s: &str) -> Result<(u32, u32), String> {
     let (w, h) = s
         .to_ascii_lowercase()
@@ -231,6 +504,26 @@ fn parse_size(s: &str) -> Result<(u32, u32), String> {
     let w: u32 = w.parse().map_err(|_| "bad width")?;
     let h: u32 = h.parse().map_err(|_| "bad height")?;
     Ok((w, h))
+}
+
+fn load_db(path: &Path) -> Result<(Vec<u8>, Database), String> {
+    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let limits = Limits::default();
+    let payload = inflate_db(BufReader::new(file), &limits)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let db = parse_db(&payload, &limits).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok((payload, db))
+}
+
+fn unwrap_bank_file(path: &Path) -> Result<Vec<u8>, String> {
+    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    unwrap_bank(BufReader::new(file), &Limits::default())
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn load_bank(path: &Path) -> Result<adv_core::fsb::Bank, String> {
+    let bytes = unwrap_bank_file(path)?;
+    parse_bank(&bytes, &Limits::default()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn load_loc(path: &Path, entry: Option<&str>) -> Result<LocFile, String> {
@@ -337,6 +630,22 @@ fn selected<'a>(pak: &'a PakArchive<BufReader<File>>, filter: Option<&str>) -> V
         .collect()
 }
 
+fn print_tree(node: &adv_core::browse::Node, depth: usize, indent: usize) {
+    let pad = "  ".repeat(indent);
+    for (name, child) in &node.dirs {
+        println!("{pad}{name}/  ({} files)", child.total_files());
+        if depth > 1 {
+            print_tree(child, depth - 1, indent + 1);
+        }
+    }
+    for name in node.files.keys() {
+        println!(
+            "{pad}{name}  [{}]",
+            adv_core::browse::classify(name, &[]).name()
+        );
+    }
+}
+
 fn warn_skipped(pak: &PakArchive<BufReader<File>>) {
     for s in pak.skipped() {
         eprintln!("skipped {:?}: {}", s.name, s.reason);
@@ -367,6 +676,20 @@ fn run(command: Command) -> Result<u8, String> {
             println!("Entries: {}", pak.entries().len());
             println!("Total size: {total} bytes");
             println!("Skipped: {}", pak.skipped().len());
+            warn_skipped(&pak);
+            Ok(0)
+        }
+        Command::Tree {
+            pak: path,
+            dir,
+            depth,
+        } => {
+            let pak = open(&path)?;
+            let tree = adv_core::browse::build_tree(pak.entries());
+            let node = tree
+                .dir(&dir)
+                .ok_or_else(|| format!("no such directory in the archive: {dir:?}"))?;
+            print_tree(node, depth, 0);
             warn_skipped(&pak);
             Ok(0)
         }
@@ -417,6 +740,345 @@ fn run(command: Command) -> Result<u8, String> {
             warn_skipped(&pak);
             Ok(0)
         }
+        Command::Db {
+            command: DbCommand::Info { file },
+        } => {
+            let (payload, db) = load_db(&file)?;
+            let hex: String = db.version.iter().map(|b| format!("{b:02X}")).collect();
+            println!("Version buffer: {hex}");
+            println!("Inflated size: {} bytes", payload.len());
+            println!("Named resources: {}", db.files.len());
+            println!("Data image: {} bytes", db.data.len());
+            println!("Pointer fixes: {}", db.fix_count);
+            println!("Referenced paks: {}", db.packs.len());
+            println!("Struct types ({}):", db.structs.len());
+            for s in &db.structs {
+                println!("  {s}");
+            }
+            Ok(0)
+        }
+        Command::Db {
+            command: DbCommand::Packs { file },
+        } => {
+            let (_, db) = load_db(&file)?;
+            for p in &db.packs {
+                println!("{p}");
+            }
+            Ok(0)
+        }
+        Command::Db {
+            command: DbCommand::List { file, filter, json },
+        } => {
+            let (payload, db) = load_db(&file)?;
+            let types = db.type_tags(&payload);
+            let rows: Vec<_> = db
+                .files
+                .iter()
+                .filter(|f| filter.as_deref().is_none_or(|p| wildcard(p, &f.name)))
+                .collect();
+            if json {
+                let items: Vec<_> = rows
+                    .iter()
+                    .map(|f| serde_json::json!({"db_id": f.db_id, "struct": types.get(&f.db_id), "name": f.name}))
+                    .collect();
+                let doc = serde_json::json!({"schema": 1, "resources": items});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?
+                );
+            } else {
+                for f in rows {
+                    println!(
+                        "{:>12}  {:<24} {}",
+                        f.db_id,
+                        types.get(&f.db_id).copied().unwrap_or("?"),
+                        f.name
+                    );
+                }
+            }
+            Ok(0)
+        }
+        Command::Blobs { file } => {
+            let raw = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let data = adv_core::geometry::inflate(&raw, &Limits::default())
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            let blobs = adv_core::blob::parse_blobs(&data)
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            println!("id\toffset\tsize");
+            for b in blobs {
+                println!("{}\t{}\t{}", b.id, b.offset, b.size);
+            }
+            Ok(0)
+        }
+        Command::Geom { command } => {
+            let (file, stride) = match &command {
+                GeomCommand::Info { file, stride }
+                | GeomCommand::Obj { file, stride, .. }
+                | GeomCommand::Glb { file, stride, .. } => (file.clone(), *stride),
+            };
+            let raw = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let data = adv_core::geometry::inflate(&raw, &Limits::default())
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            let g = adv_core::geometry::parse(&data, stride)
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            match command {
+                GeomCommand::Info { .. } => {
+                    println!(
+                        "Vertices: {} (stride {} bytes)\nTriangles: {}\nBlock after the indices: {} bytes",
+                        g.vertex_data.len() / g.stride,
+                        g.stride,
+                        g.indices.len() / 3,
+                        g.tail_block
+                    );
+                    if let Ok(sk) = g.skeleton() {
+                        println!("Bones: {}", sk.bones.len());
+                        for (i, b) in sk.bones.iter().enumerate() {
+                            let parent = b
+                                .parent
+                                .map_or_else(|| "-".to_owned(), |p| sk.bones[p].name.clone());
+                            println!("  {i:3} {}  (parent: {parent})", b.name);
+                        }
+                    }
+                    if let Some(skin) = g.skin() {
+                        let used = skin.iter().filter(|s| s.bones[0].is_some()).count();
+                        println!("Vertices with bone weights: {used} of {}", skin.len());
+                    }
+                }
+                GeomCommand::Glb { output, anim, .. } => {
+                    let glb = if let Some(a) = anim {
+                        let raw = std::fs::read(&a).map_err(|e| format!("{}: {e}", a.display()))?;
+                        let data = adv_core::geometry::inflate(&raw, &Limits::default())
+                            .map_err(|e| format!("{}: {e}", a.display()))?;
+                        let clip = adv_core::animation::decode(&data)
+                            .map_err(|e| format!("{}: {e}", a.display()))?;
+                        let name = a.file_name().map_or_else(
+                            || "clip".to_owned(),
+                            |n| n.to_string_lossy().into_owned(),
+                        );
+                        g.to_glb_animated(&clip, &name)
+                    } else {
+                        g.to_glb()
+                    }
+                    .map_err(|e| format!("{}: {e}", file.display()))?;
+                    std::fs::write(&output, glb)
+                        .map_err(|e| format!("{}: {e}", output.display()))?;
+                    println!("Wrote {}", output.display());
+                }
+                GeomCommand::Obj { output, .. } => {
+                    let name = file
+                        .file_name()
+                        .map_or_else(|| "model".to_owned(), |n| n.to_string_lossy().into_owned());
+                    std::fs::write(&output, g.to_obj(&name))
+                        .map_err(|e| format!("{}: {e}", output.display()))?;
+                    println!("Wrote {}", output.display());
+                }
+            }
+            Ok(0)
+        }
+        Command::Db {
+            command: DbCommand::Find { paths, output },
+        } => {
+            let mut paks: Vec<PathBuf> = Vec::new();
+            for p in &paths {
+                if p.is_dir() {
+                    let rd = std::fs::read_dir(p).map_err(|e| format!("{}: {e}", p.display()))?;
+                    paks.extend(
+                        rd.filter_map(Result::ok).map(|e| e.path()).filter(|f| {
+                            f.extension().is_some_and(|x| x.eq_ignore_ascii_case("pak"))
+                        }),
+                    );
+                } else {
+                    paks.push(p.clone());
+                }
+            }
+            paks.sort();
+            let limits = Limits::default();
+            let mut found = 0usize;
+            for pak in &paks {
+                let Ok(f) = File::open(pak) else {
+                    eprintln!("warning: cannot open {}", pak.display());
+                    continue;
+                };
+                let Ok(mut arc) = PakArchive::open(BufReader::new(f), limits) else {
+                    eprintln!("warning: not a readable archive: {}", pak.display());
+                    continue;
+                };
+                let entries = arc.entries().to_vec();
+                for e in entries {
+                    let name = e.path.to_string();
+                    let leaf = name.rsplit('/').next().unwrap_or(&name);
+                    if !leaf.to_lowercase().ends_with(".bin") || leaf.contains('(') {
+                        continue;
+                    }
+                    let Ok((data, _)) = arc.read(&e, Layer::Raw) else {
+                        continue;
+                    };
+                    let Some(v) = adv_core::db::db_signature(&data) else {
+                        continue;
+                    };
+                    found += 1;
+                    let hex: String = v.iter().map(|b| format!("{b:02X}")).collect();
+                    let pak_name = pak
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                    println!("{pak_name}\t{name}\t{}\t{hex}", e.size);
+                    if let Some(out) = &output {
+                        let stem = pak
+                            .file_stem()
+                            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                        let dir = out.join(&stem);
+                        std::fs::create_dir_all(&dir)
+                            .map_err(|er| format!("{}: {er}", dir.display()))?;
+                        let target = dir.join(name.replace('/', "_"));
+                        std::fs::write(&target, &data)
+                            .map_err(|er| format!("{}: {er}", target.display()))?;
+                    }
+                }
+            }
+            eprintln!("{found} database(s) in {} pak file(s)", paks.len());
+            Ok(0)
+        }
+        Command::Db {
+            command: DbCommand::Textures { file, filter, json },
+        } => {
+            let (payload, db) = load_db(&file)?;
+            let types = db.type_tags(&payload);
+            let names: std::collections::HashMap<u64, &str> = db
+                .files
+                .iter()
+                .map(|f| (f.db_id, f.name.as_str()))
+                .collect();
+            let mut rows: Vec<(adv_core::db::TextureRecord, Option<&str>)> = types
+                .iter()
+                .filter(|(_, s)| **s == "Texture")
+                .filter_map(|(id, _)| db.texture_record(&payload, *id))
+                .map(|r| (r, names.get(&r.db_id).copied()))
+                .filter(|(_, n)| match (&filter, n) {
+                    (None, _) => true,
+                    (Some(p), Some(n)) => wildcard(p, n),
+                    (Some(_), None) => false,
+                })
+                .collect();
+            rows.sort_by_key(|(r, _)| r.db_id);
+            if json {
+                let items: Vec<_> = rows
+                    .iter()
+                    .map(|(r, n)| {
+                        serde_json::json!({"db_id": r.db_id, "name": n, "type": r.kind,
+                            "width": r.width, "height": r.height, "mips": r.mips})
+                    })
+                    .collect();
+                let doc = serde_json::json!({"schema": 1, "textures": items});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?
+                );
+            } else {
+                for (r, n) in rows {
+                    println!(
+                        "{:>12}  {:>5}x{:<5} type {} mips {}  {}",
+                        r.db_id,
+                        r.width,
+                        r.height,
+                        r.kind,
+                        r.mips,
+                        n.unwrap_or("-")
+                    );
+                }
+            }
+            Ok(0)
+        }
+        Command::Audio {
+            command: AudioCommand::List { file },
+        } => {
+            let bank = load_bank(&file)?;
+            println!(
+                "Streams: {} (FSB5 version {}, codec mode {})",
+                bank.streams.len(),
+                bank.version,
+                bank.mode
+            );
+            for (i, s) in bank.streams.iter().enumerate() {
+                let rate = s.frequency.map_or("?".to_owned(), |f| f.to_string());
+                let secs = s.seconds().map_or("?".to_owned(), |v| format!("{v:.2}"));
+                println!(
+                    "{:>4}  {rate:>6} Hz  {}ch  {secs:>8} s  {}",
+                    i + 1,
+                    s.channels,
+                    s.name
+                );
+            }
+            Ok(0)
+        }
+        Command::Audio {
+            command:
+                AudioCommand::Export {
+                    file,
+                    output,
+                    vgmstream,
+                },
+        } => {
+            let bytes = unwrap_bank_file(&file)?;
+            std::fs::create_dir_all(&output).map_err(|e| format!("{}: {e}", output.display()))?;
+            let external =
+                vgmstream.or_else(|| std::env::var_os("ADV_VGMSTREAM").map(PathBuf::from));
+            let Some(tool) = external else {
+                let bank = parse_bank(&bytes, &Limits::default()).map_err(|e| e.to_string())?;
+                let (mut done, mut failed) = (0usize, 0usize);
+                for (i, s) in bank.streams.iter().enumerate() {
+                    let safe: String = s
+                        .name
+                        .chars()
+                        .map(|c| {
+                            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                                '_'
+                            } else {
+                                c
+                            }
+                        })
+                        .collect();
+                    let target = output.join(format!("{safe}_{}.wav", i + 1));
+                    match bank.decode(&bytes, i) {
+                        Ok(pcm) => {
+                            std::fs::write(&target, pcm.to_wav())
+                                .map_err(|e| format!("{}: {e}", target.display()))?;
+                            done += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("stream {} ({}): {e}", i + 1, s.name);
+                            failed += 1;
+                        }
+                    }
+                }
+                println!("Decoded {done} stream(s) to {}", output.display());
+                return Ok(u8::from(failed > 0));
+            };
+            // vgmstream reads a plain .fsb, so a .bsb is inflated into a temporary file.
+            let tmp = output.join(".adv-bank.tmp.fsb");
+            std::fs::write(&tmp, &bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
+            let result = std::process::Command::new(&tool)
+                .current_dir(&output)
+                .args(["-S", "0", "-o", "?n_?s.wav"])
+                .arg(".adv-bank.tmp.fsb")
+                .stdout(std::process::Stdio::null())
+                .status();
+            let _ = std::fs::remove_file(&tmp);
+            match result {
+                Ok(s) if s.success() => {
+                    println!(
+                        "Decoded {} stream(s) to {}",
+                        parse_bank(&bytes, &Limits::default()).map_or(0, |b| b.streams.len()),
+                        output.display()
+                    );
+                    Ok(0)
+                }
+                Ok(s) => Err(format!("{} failed with {s}", tool.display())),
+                Err(e) => Err(format!(
+                    "cannot run {}: {e}. Install vgmstream-cli and pass --vgmstream <path> or set ADV_VGMSTREAM",
+                    tool.display()
+                )),
+            }
+        }
         Command::Tex {
             command: TexCommand::Info { file },
         } => {
@@ -425,7 +1087,27 @@ fn run(command: Command) -> Result<u8, String> {
             for l in &levels {
                 println!("  mip {:>2}: {} bytes", l.id, l.data.len());
             }
-            println!("Width, height and format are not stored in the file; use --size and --dxt.");
+            if let Some(g) = adv_core::texheur::guess(&levels, None) {
+                let (w, h) = g.size();
+                println!(
+                    "Guess: {w}x{h} {:?} (candidates: {})",
+                    g.format,
+                    g.candidates
+                        .iter()
+                        .map(|(a, b)| format!("{a}x{b}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            match load_desc(&file) {
+                Ok(d) => println!(
+                    "From .xdb: {}x{} (used {}x{}), {:?}, {} mip(s)",
+                    d.width, d.height, d.real_width, d.real_height, d.format, d.mips
+                ),
+                Err(_) => println!(
+                    "No .xdb next to the file: width, height and format must be given with --size and --dxt."
+                ),
+            }
             Ok(0)
         }
         Command::Tex {
@@ -434,17 +1116,42 @@ fn run(command: Command) -> Result<u8, String> {
                     file,
                     size,
                     dxt,
+                    db,
+                    db_id,
+                    tdb,
+                    index,
+                    crop,
                     format,
                     mip,
                     output,
                 },
         } => {
-            let (w, h) = parse_size(&size)?;
-            let fmt = match dxt {
-                1 => Dxt::Dxt1,
-                3 => Dxt::Dxt3,
-                5 => Dxt::Dxt5,
-                _ => return Err("--dxt must be 1, 3 or 5".into()),
+            let desc = if size.is_none() || dxt.is_none() || crop {
+                Some(match &db {
+                    Some(d) => desc_from_db(d, &file, db_id)?,
+                    None => match load_desc(&file) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            let lv = load_texture(&file)?;
+                            guess_desc(&file, &lv, tdb.as_deref(), index, dxt).ok_or(e)?
+                        }
+                    },
+                })
+            } else {
+                None
+            };
+            let (w, h) = match (&size, &desc) {
+                (Some(s), _) => parse_size(s)?,
+                (None, Some(d)) => (d.width, d.height),
+                (None, None) => unreachable!("description is loaded when size is missing"),
+            };
+            let fmt = match (dxt, &desc) {
+                (Some(1), _) => Dxt::Dxt1,
+                (Some(3), _) => Dxt::Dxt3,
+                (Some(5), _) => Dxt::Dxt5,
+                (Some(_), _) => return Err("--dxt must be 1, 3 or 5".into()),
+                (None, Some(d)) => d.format,
+                (None, None) => unreachable!("description is loaded when dxt is missing"),
             };
             let levels = load_texture(&file)?;
             let bytes = match format.as_str() {
@@ -455,8 +1162,20 @@ fn run(command: Command) -> Result<u8, String> {
                     }
                     .ok_or("requested mip level is not in the file")?;
                     let (lw, lh) = level_dims(w, h, l.id);
-                    let rgba = decode_dxt(&l.data, lw, lh, fmt).map_err(|e| e.to_string())?;
-                    write_png(lw, lh, &rgba).map_err(|e| e.to_string())?
+                    let mut rgba = decode_dxt(&l.data, lw, lh, fmt).map_err(|e| e.to_string())?;
+                    let (mut ow, mut oh) = (lw, lh);
+                    if let (true, Some(d)) = (crop, &desc) {
+                        let s = l.id.clamp(0, 31) as u32;
+                        ow = (d.real_width >> s).clamp(1, lw);
+                        oh = (d.real_height >> s).clamp(1, lh);
+                        let mut cut = Vec::with_capacity(ow as usize * oh as usize * 4);
+                        for y in 0..oh as usize {
+                            let a = y * lw as usize * 4;
+                            cut.extend_from_slice(&rgba[a..a + ow as usize * 4]);
+                        }
+                        rgba = cut;
+                    }
+                    write_png(ow, oh, &rgba).map_err(|e| e.to_string())?
                 }
                 "dds" => {
                     let top = levels.first().ok_or("no levels")?.id;
@@ -635,6 +1354,15 @@ fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     };
+    // A closed pipe (`adv ... | head`) is not an error worth a backtrace.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let text = info.to_string();
+        if text.contains("Broken pipe") {
+            std::process::exit(0);
+        }
+        default_hook(info);
+    }));
     match run(command) {
         Ok(code) => ExitCode::from(code),
         Err(message) => {

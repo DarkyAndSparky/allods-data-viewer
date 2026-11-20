@@ -33,6 +33,16 @@ VERIFIED (command ran and passed), PARTIALLY VERIFIED, NOT VERIFIED, FAILED, BLO
 
 Synthetic inputs built in code; truncated, corrupted and oversized variants for each parser; snapshot tests for CLI output; samples from the maintainer run only when `ADV_SAMPLES` is set and are never committed. A bug fix gets a regression test.
 
+## Interface languages
+
+The interface is translated 100% into Russian and English. All visible text lives in `web/src/i18n.ts`
+and is looked up through i18next (plural forms `key_one`, `key_few`, `key_many`, `key_other`; placeholders
+`{{name}}`; counts always go through `count` so Russian gets the right form). `web/src/i18n.test.ts` fails when
+a key exists in one language only, a plural form the language needs is missing, a string is empty, a Russian
+string has no Cyrillic, an English string has Cyrillic, or the placeholders differ between languages. No literal user-facing text
+elsewhere. Messages coming from the core or CLI are English technical text; the app must map them to
+translated, user-facing messages.
+
 ## Dependencies
 
 Direct dependencies and tooling are releases of the current calendar year (verify the real date). New ones need approval and a line in `docs/ROADMAP.md` or an ADR. `deny.toml` lists allowed licenses; copyleft crates are not embedded.

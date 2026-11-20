@@ -3,7 +3,7 @@
 // The project must never contain game assets (see CONTRIBUTING.md). Run in CI and before a PR:
 //   node scripts/check-repo.mjs
 import { execFileSync } from 'node:child_process';
-import { statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const FORBIDDEN_EXT = new Set([
@@ -38,7 +38,28 @@ export function problems(files, sizeOf = (f) => statSync(f).size) {
   return out;
 }
 
+const SKIP_DIRS = new Set(['.git', 'target', 'node_modules', 'dist']);
+
+/** Fallback for a source archive without `.git`: walks the working tree. */
+function walk(dir = '.', prefix = '') {
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) files.push(...walk(`${dir}/${entry.name}`, `${prefix}${entry.name}/`));
+    } else {
+      files.push(`${prefix}${entry.name}`);
+    }
+  }
+  return files;
+}
+
 function trackedFiles() {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
+  } catch {
+    console.error('check-repo: not a git repository, checking the working tree instead');
+    return walk();
+  }
   const out = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return out.split('\0').filter(Boolean);
 }

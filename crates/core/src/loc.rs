@@ -82,8 +82,10 @@ fn utf16_at(d: &[u8], pos: usize, units: usize) -> Result<String> {
         return Err(Error::format(format!("text at {pos} lacks NUL terminator")));
     }
     let words: Vec<u16> = raw[..bytes]
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     Ok(String::from_utf16_lossy(&words))
 }

@@ -247,6 +247,95 @@ pub fn decode_dxt(data: &[u8], width: u32, height: u32, format: Dxt) -> Result<V
     Ok(out)
 }
 
+/// Uncompressed pixel formats seen in splat maps and small textures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Raw {
+    /// 16 bit, 5-6-5 bits of red, green, blue.
+    Rgb565,
+    /// 16 bit, 4 bits per channel, alpha in the high nibble.
+    Rgba4444,
+    /// 32 bit, bytes in memory order B, G, R, A.
+    Bgra8888,
+    /// 8 bit luminance.
+    L8,
+}
+
+impl Raw {
+    /// All formats, in the order they are offered.
+    pub const ALL: [Raw; 4] = [Self::Rgb565, Self::Rgba4444, Self::Bgra8888, Self::L8];
+
+    /// Bytes per pixel.
+    #[must_use]
+    pub fn bytes(self) -> u64 {
+        match self {
+            Self::Rgb565 | Self::Rgba4444 => 2,
+            Self::Bgra8888 => 4,
+            Self::L8 => 1,
+        }
+    }
+
+    /// Short name.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rgb565 => "RGB565",
+            Self::Rgba4444 => "RGBA4444",
+            Self::Bgra8888 => "BGRA8888",
+            Self::L8 => "L8",
+        }
+    }
+}
+
+/// Decodes an uncompressed level to RGBA8.
+///
+/// # Errors
+///
+/// [`Error::Format`] when `data` is not exactly `width * height * bytes`,
+/// [`Error::Limit`] for dimensions above 16384.
+pub fn decode_raw(data: &[u8], width: u32, height: u32, raw: Raw) -> Result<Vec<u8>> {
+    if width == 0 || height == 0 || width > 16384 || height > 16384 {
+        return Err(Error::limit(format!("unsupported size {width}x{height}")));
+    }
+    let px = u64::from(width) * u64::from(height);
+    if data.len() as u64 != px * raw.bytes() {
+        return Err(Error::format(format!(
+            "level has {} bytes, {width}x{height} {} needs {}",
+            data.len(),
+            raw.label(),
+            px * raw.bytes()
+        )));
+    }
+    let mut out = Vec::with_capacity(data.len() / raw.bytes() as usize * 4);
+    let ex5 = |v: u16| ((u32::from(v) * 255 + 15) / 31) as u8;
+    let ex6 = |v: u16| ((u32::from(v) * 255 + 31) / 63) as u8;
+    match raw {
+        Raw::Rgb565 => {
+            for c in data.chunks_exact(2) {
+                let v = u16::from_le_bytes([c[0], c[1]]);
+                out.extend_from_slice(&[ex5(v >> 11), ex6((v >> 5) & 63), ex5(v & 31), 255]);
+            }
+        }
+        Raw::Rgba4444 => {
+            for c in data.chunks_exact(2) {
+                let v = u16::from_le_bytes([c[0], c[1]]);
+                let n = |s: u16| (((v >> s) & 15) * 17) as u8;
+                out.extend_from_slice(&[n(8), n(4), n(0), n(12)]);
+            }
+        }
+        Raw::Bgra8888 => {
+            for c in data.chunks_exact(4) {
+                out.extend_from_slice(&[c[2], c[1], c[0], c[3]]);
+            }
+        }
+        Raw::L8 => {
+            for &l in data {
+                out.extend_from_slice(&[l, l, l, 255]);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Builds a DDS file. `levels` are ordered largest first; `width`/`height` are the
 /// dimensions of the first one. Each level must match its expected size.
 ///
@@ -463,5 +552,24 @@ mod tests {
             .expect("inflate");
         assert_eq!(raw, [&[0u8][..], &rgba[..]].concat());
         assert!(write_png(2, 2, &rgba).is_err());
+    }
+
+    #[test]
+    fn raw_rgb565_decodes_primaries() {
+        let d = [0x00, 0xf8, 0xe0, 0x07, 0x1f, 0x00, 0x00, 0x00];
+        let out = decode_raw(&d, 2, 2, Raw::Rgb565).unwrap();
+        assert_eq!(
+            &out[..12],
+            &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255]
+        );
+        assert_eq!(&out[12..], &[0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn raw_rejects_wrong_size_and_huge_dimensions() {
+        assert!(decode_raw(&[0; 7], 2, 2, Raw::Rgb565).is_err());
+        assert!(decode_raw(&[], 0, 4, Raw::L8).is_err());
+        assert!(decode_raw(&[], 20000, 1, Raw::L8).is_err());
+        assert!(decode_raw(&[1, 2, 3, 4], 2, 2, Raw::L8).is_ok());
     }
 }

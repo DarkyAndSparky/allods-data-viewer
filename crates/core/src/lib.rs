@@ -6,13 +6,31 @@
 //!
 //! Supported formats are documented in `docs/formats/`.
 
+pub mod animation;
+pub mod blob;
+pub mod browse;
+pub mod db;
+pub mod db32;
 pub mod error;
 pub mod extract;
+pub mod fsb;
+pub mod gamever;
+pub mod geometry;
 pub mod limits;
 pub mod loc;
+pub mod ogv;
+pub mod packsinfo;
 pub mod pak;
+pub mod picture;
+pub mod preview;
+pub mod skeleton;
+pub mod tdb;
+pub mod texheur;
 pub mod texture;
+pub mod vorbis;
+mod vorbis_setups;
 pub mod vpath;
+pub mod xdb;
 
 pub use error::{Error, Result};
 pub use limits::Limits;

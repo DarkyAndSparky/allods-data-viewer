@@ -27,3 +27,10 @@ describe("formatBytes", () => {
     expect(() => formatBytes(Number.POSITIVE_INFINITY)).toThrow(RangeError);
   });
 });
+
+describe("formatBytes in Russian", () => {
+  it("uses Russian unit names", () => {
+    expect(formatBytes(1536, "ru")).toBe("1.5 КБ");
+    expect(formatBytes(10, "ru")).toBe("10 Б");
+  });
+});

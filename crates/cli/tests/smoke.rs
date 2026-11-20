@@ -58,6 +58,27 @@ mod pak_commands {
     }
 
     #[test]
+    fn tree_shows_directories_and_kinds() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let pak = make_pak(dir.path());
+        let out = adv().arg("tree").arg(&pak).output().expect("run");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(text.contains("a/  (1 files)"), "{text}");
+        assert!(text.contains("  one.txt  [text]"), "{text}");
+        assert!(text.contains("two.bin  [other]"), "{text}");
+
+        let out = adv()
+            .arg("tree")
+            .arg(&pak)
+            .args(["--dir", "nope"])
+            .output()
+            .expect("run");
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("no such directory"));
+    }
+
+    #[test]
     fn list_info_and_extract_work() {
         let dir = tempfile::tempdir().expect("tmp");
         let pak = make_pak(dir.path());
@@ -206,7 +227,7 @@ mod loc_commands {
 mod tex_commands {
     use std::process::Command;
 
-    fn bin(levels: &[(i32, &[u8])]) -> Vec<u8> {
+    pub fn bin(levels: &[(i32, &[u8])]) -> Vec<u8> {
         let mut v = Vec::new();
         for (id, d) in levels {
             v.extend_from_slice(&id.to_le_bytes());
@@ -267,5 +288,291 @@ mod tex_commands {
             .output()
             .expect("run");
         assert_eq!(out.status.code(), Some(1), "wrong size must fail");
+    }
+}
+
+mod audio_commands {
+    use std::process::Command;
+
+    /// Smallest FSB5 with one 48 kHz mono stream named "Hello".
+    fn fsb() -> Vec<u8> {
+        let bits: u64 = (9 << 1) | (48_000u64 << 34);
+        let mut names = 4u32.to_le_bytes().to_vec();
+        names.extend_from_slice(b"Hello\0");
+        let mut out = b"FSB5".to_vec();
+        for v in [1u32, 1, 8, names.len() as u32, 0, 15] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out.resize(60, 0);
+        out.extend_from_slice(&bits.to_le_bytes());
+        out.extend_from_slice(&names);
+        out
+    }
+
+    #[test]
+    fn list_and_export_errors() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let file = dir.path().join("a.fsb");
+        std::fs::write(&file, fsb()).expect("write");
+        let adv = || Command::new(env!("CARGO_BIN_EXE_adv"));
+
+        let out = adv()
+            .args(["audio", "list"])
+            .arg(&file)
+            .output()
+            .expect("run");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(text.contains("Streams: 1") && text.contains("48000 Hz") && text.contains("Hello"));
+
+        let out = adv()
+            .args(["audio", "export", "--vgmstream", "no-such-tool-xyz", "-o"])
+            .arg(dir.path().join("o"))
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert_eq!(out.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("cannot run"));
+        assert!(!dir.path().join("o/.adv-bank.tmp.fsb").exists());
+
+        // The built-in decoder reports a stream it cannot decode and exits with 1.
+        let out = adv()
+            .env_remove("ADV_VGMSTREAM")
+            .args(["audio", "export", "-o"])
+            .arg(dir.path().join("o2"))
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert_eq!(out.status.code(), Some(1));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("stream 1") && err.contains("Vorbis"), "{err}");
+
+        std::fs::write(&file, b"junk junk junk").expect("write");
+        let out = adv()
+            .args(["audio", "list"])
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert_eq!(out.status.code(), Some(1));
+    }
+
+    #[test]
+    fn size_and_format_come_from_the_xdb() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let file = dir.path().join("U.(UITexture).bin");
+        std::fs::write(
+            &file,
+            super::tex_commands::bin(&[(0, &[0, 0xF8, 0, 0, 0, 0, 0, 0].repeat(4))]),
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("U.(UITexture).xdb"),
+            "<UITexture><mipsNumber>1</mipsNumber><type>DXT1</type><width>8</width><height>8</height><realWidth>5</realWidth><realHeight>3</realHeight></UITexture>",
+        )
+        .expect("write");
+        let adv = || Command::new(env!("CARGO_BIN_EXE_adv"));
+        let png = dir.path().join("o.png");
+        let out = adv()
+            .args(["tex", "convert", "--crop", "-o"])
+            .arg(&png)
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let data = std::fs::read(&png).expect("read");
+        assert_eq!(&data[16..24], &[0, 0, 0, 5, 0, 0, 0, 3], "cropped to 5x3");
+
+        let info = adv()
+            .args(["tex", "info"])
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert!(String::from_utf8_lossy(&info.stdout).contains("8x8 (used 5x3)"));
+
+        std::fs::remove_file(dir.path().join("U.(UITexture).xdb")).expect("rm");
+        let out = adv()
+            .args(["tex", "convert", "-o"])
+            .arg(&png)
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert!(out.status.success(), "a guess is made without an .xdb");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("guess"));
+
+        // 24 bytes of DXT1 data are 48 pixels: no power-of-two size fits, so nothing to guess.
+        let odd = dir.path().join("V.(UITexture).bin");
+        std::fs::write(&odd, super::tex_commands::bin(&[(0, &[0u8; 24])])).expect("write");
+        let out = adv()
+            .args(["tex", "convert", "-o"])
+            .arg(&png)
+            .arg(&odd)
+            .output()
+            .expect("run");
+        assert_eq!(out.status.code(), Some(1));
+    }
+}
+
+mod db_commands {
+    use std::process::Command;
+
+    #[test]
+    fn find_locates_databases_inside_paks() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tmp");
+        let mut db = vec![0xCC, 2, 0x2E, 0x59, 0x73, 4, 0, 0, 1, 2, 3, 4];
+        db.extend([0u8; 16]);
+        let pak = dir.path().join("Some.Mini.pak");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&pak).expect("create"));
+        let opts = zip::write::SimpleFileOptions::default();
+        zip.start_file("Maps_A.bin", opts).expect("start");
+        zip.write_all(&db).expect("write");
+        zip.start_file("x/B.(Texture).bin", opts).expect("start");
+        zip.write_all(&db).expect("write");
+        zip.start_file("notes.bin", opts).expect("start");
+        zip.write_all(b"not a database").expect("write");
+        zip.finish().expect("finish");
+        let out_dir = dir.path().join("dbs");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["db", "find"])
+            .arg(dir.path())
+            .arg("-o")
+            .arg(&out_dir)
+            .output()
+            .expect("run");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains("Maps_A.bin") && text.contains("CC022E59"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("Texture") && !text.contains("notes"),
+            "{text}"
+        );
+        assert!(out_dir.join("Some.Mini").join("Maps_A.bin").exists());
+    }
+
+    #[test]
+    fn info_and_errors() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let bad = dir.path().join("x.bin");
+        std::fs::write(&bad, b"not a database at all").expect("write");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["db", "info"])
+            .arg(&bad)
+            .output()
+            .expect("run");
+        assert!(!out.status.success());
+        assert!(!String::from_utf8_lossy(&out.stderr).is_empty());
+    }
+
+    #[test]
+    fn convert_with_bad_db_reports_error() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let db = dir.path().join("pack.bin");
+        std::fs::write(&db, b"junk").expect("write");
+        let tex = dir.path().join("A.(Texture).bin");
+        std::fs::write(&tex, b"x").expect("write");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["tex", "convert"])
+            .arg(&tex)
+            .arg("--db")
+            .arg(&db)
+            .arg("-o")
+            .arg(dir.path().join("o.png"))
+            .output()
+            .expect("run");
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("pack.bin"));
+    }
+}
+
+mod geom_commands {
+    use std::process::Command;
+
+    fn sample() -> Vec<u8> {
+        let mut v = Vec::new();
+        for i in 0..3u32 {
+            for f in [i as f32, 0.0, 0.0, 0.5, 0.5] {
+                v.extend(f.to_le_bytes());
+            }
+            v.extend([0u8; 4]);
+        }
+        let mut d = vec![0u8; 4];
+        d.extend((v.len() as u32).to_le_bytes());
+        d.extend(&v);
+        d.extend(1u32.to_le_bytes());
+        d.extend(6u32.to_le_bytes());
+        for i in [0u16, 1, 2] {
+            d.extend(i.to_le_bytes());
+        }
+        d.extend(2u32.to_le_bytes());
+        d.extend(0u32.to_le_bytes());
+        d
+    }
+
+    #[test]
+    fn info_and_obj() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let f = dir.path().join("M.(Geometry).bin");
+        std::fs::write(&f, sample()).expect("write");
+        let adv = || Command::new(env!("CARGO_BIN_EXE_adv"));
+        let out = adv().args(["geom", "info"]).arg(&f).output().expect("run");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("Vertices: 3 (stride 24"), "{text}");
+        assert!(text.contains("Triangles: 1"), "{text}");
+        let obj = dir.path().join("m.obj");
+        let out = adv()
+            .args(["geom", "obj"])
+            .arg(&f)
+            .arg("-o")
+            .arg(&obj)
+            .output()
+            .expect("run");
+        assert!(out.status.success());
+        assert!(
+            std::fs::read_to_string(&obj)
+                .expect("read")
+                .contains("f 1/1 2/2 3/3")
+        );
+        let glb = dir.path().join("m.glb");
+        let out = adv()
+            .args(["geom", "glb"])
+            .arg(&f)
+            .arg("-o")
+            .arg(&glb)
+            .output()
+            .expect("run");
+        assert!(out.status.success());
+        let bytes = std::fs::read(&glb).expect("read");
+        assert_eq!(&bytes[0..4], b"glTF");
+        let jl = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes[20..20 + jl]).expect("valid JSON");
+        assert_eq!(json["asset"]["version"], "2.0");
+        assert_eq!(json["accessors"][0]["count"], 3);
+        assert_eq!(json["accessors"][2]["count"], 3);
+    }
+
+    #[test]
+    fn damaged_file_is_an_error() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let f = dir.path().join("bad.bin");
+        std::fs::write(&f, [1u8, 2, 3]).expect("write");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["geom", "info"])
+            .arg(&f)
+            .output()
+            .expect("run");
+        assert_eq!(out.status.code(), Some(1));
     }
 }

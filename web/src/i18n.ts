@@ -1,8 +1,25 @@
+import { createInstance, type i18n as I18n } from "i18next";
+
 /** Languages the interface is translated to. */
 export type Lang = "en" | "ru";
 
 const en = {
   about: "About",
+  statusVersion: "App {{version}}",
+  statusGame: "Game data: {{version}}",
+  statusGameUnknown: "Game data: version unknown",
+  statusGameRev: "Game data: {{version}} (r{{revision}}, {{date}})",
+  statusTotals: "Files: {{files}} · Archives: {{paks}} · Size: {{size}}",
+  statusCounting: "Counting files…",
+  statusKindHint: "Click a type to list all files of that type",
+  statusFold: "Fold the status bar",
+  statusUnfold: "Unfold the status bar",
+  kindOther: "other",
+  kindOtherTip: "Includes plain .bin files: their type is only known after opening them",
+  kindListLimit: "Only the first {{count}} files are shown.",
+  sideCollapse: "Hide file list",
+  sideExpand: "Show file list",
+  sideResize: "Resize file list (drag, or use the arrow keys)",
   aboutTitle: "About Allods Data Viewer",
   close: "Close",
   tagline: "Open source viewer and extractor for game client resources.",
@@ -12,15 +29,151 @@ const en = {
   source: "Source code",
   legal:
     "Allods Data Viewer is an independent project and is not affiliated with the game's developers or publishers. It contains no game assets. Game and company names belong to their respective owners.",
-  formats:
-    "Based on notes about the file formats; no code from other viewers is used.",
+  open: "Open",
+  clearPath: "Clear",
+  clearPathTip: "Close the opened folder or file and clear the list",
+  pathLabel: "Game data folder or .pak file",
+  pathPlaceholder: "Folder with the game data or a .pak file; you can also drop it on the window",
+  language: "Language",
+  emptyTitle: "Nothing open yet",
+  emptyHint:
+    "Enter the path to the game data folder (the one with Packs) and press Open, or drop a folder or a .pak file on this window.",
+  browserOnly: "This page works only inside the desktop app. Run the desktop app to open game data.",
+  loading: "Loading…",
+  emptyFolder: "This folder is empty.",
+  selectFile: "Select a file in the tree to preview it.",
+  files_one: "{{count}} file",
+  files_other: "{{count}} files",
+  locFilter: "Filter entries by id, key or text",
+  locPrev: "Previous",
+  locNext: "Next",
+  locId: "ID",
+  locKey: "Key",
+  locText: "Text",
+  locRange: "{{from}}–{{to}} of {{matched}} (total {{total}})",
+  textTruncated: "The file is longer; only the first part is shown.",
+  imageInfo: "Picture {{w}}×{{h}}, format {{format}}",
+  zoomLabel: "Zoom",
+  zoomFit: "fit",
+  sizeGuessed:
+    "The size is not stored in the file and was guessed. If the picture looks wrong, choose another size:",
+  sizeLabel: "Size",
+  sizeAuto: "Auto",
+  sizeCycleHint: "Ctrl+click: next size",
+  audioInfo_one: "Sound bank: {{count}} stream",
+  audioInfo_other: "Sound bank: {{count}} streams",
+  play: "Play",
+  stop: "Stop",
+  channels: "channels",
+  seconds: "s",
+  hertz: "Hz",
+  binaryInfo: "Binary file, {{size}}. First bytes:",
+  unnamedStream: "Stream {{n}}",
+  errBadPath: "The path is not valid.",
+  errNotFound: "The file or folder was not found.",
+  errWrongKind: "This item cannot be used that way.",
+  errFailed: "The operation failed.",
+  errNoSession: "Open a folder first.",
+  errUnknown: "Something went wrong.",
+  errDetails: "Details",
+  kindText: "text",
+  kindTexture: "texture",
+  kindAudio: "sound",
+  kindVideo: "video",
+  kindDatabase: "database",
+  archive: "archive",
+  opened: "Opened",
+  modelInfo: "Model: {{vertices}}, {{triangles}}",
+  vertexCount_one: "{{count}} vertex",
+  vertexCount_other: "{{count}} vertices",
+  triangleCount_one: "{{count}} triangle",
+  triangleCount_other: "{{count}} triangles",
+  modelNoteTitle: "About this view",
+  modelNote:
+    "Shown without textures: how models refer to their textures is not known yet. The axis directions are a guess; try the Z up option if the model lies on its side.",
+  wireframe: "Wireframe",
+  zUp: "Z up",
+  resetView: "Reset view",
+  webglMissing: "3D view is not available: WebGL could not be started.",
+  searchLabel: "Search by file name",
+  searchPlaceholder: "Search by file name…",
+  noResults: "Nothing found.",
+  crumbRoot: "Data",
+  crumbsLabel: "Path",
+  folderUp: "Up one level",
+  hideJunk: "Hide Mods and addons folders",
+  searchScope: "Only in the selected folder",
+  searchScopeNamed: "Only in: {{name}}",
+  searchInTexts: "Also search inside texts",
+  searchInTextsTip: "Looks into text files and .loc files; can take a while on a large game folder",
+  textHitsTitle: "In texts",
+  textHitsLimit: "Only the first {{count}} text matches are shown; make the query longer.",
+  foundCount: "Found: {{count}}",
+  resultsLimit: "Only the first {{count}} matches are shown; make the query longer.",
+  openFolder: "Open folder…",
+  openFile: "Open .pak file…",
+  saveRaw: "Save file as…",
+  savePng: "Save as PNG…",
+  saveWav: "Save WAV…",
+  saveObj: "Save as OBJ…",
+  saved: "Saved: {{path}}",
+  filterPak: "Allods archive",
+  filterPng: "PNG image",
+  filterWav: "WAV sound",
+  filterObj: "OBJ model",
+  filterAll: "All files",
+  showLabel: "Show",
+  showAll: "Everything",
+  showText: "Text",
+  showTexture: "Textures",
+  showModel: "Models",
+  showAudio: "Sound",
+  showVideo: "Video",
+  showDatabase: "Databases",
+  sortLabel: "Sort",
+  sortName: "By name",
+  sortSize: "By size",
+  sortKind: "By type",
+  kindModel: "model",
+  saveTxt: "Save as text (.txt)…",
+  saveHtml: "Save as web page (.html)…",
+  saveXml: "Save as XML (.xml)…",
+  filterTxt: "Text file",
+  filterHtml: "Web page",
+  filterXml: "XML file",
+  saveGlb: "Save as glTF (.glb)…",
+  filterGlb: "glTF model",
+  kindAnimation: "animation",
+  showAnimation: "Animations",
+  videoSize: "Video: {{width}} x {{height}}",
+  videoFps: "{{fps}} frames per second",
+  videoLength: "{{seconds}} s",
+  videoNote: "Theora video. The window shows only the header; use \"Save file as…\" to get the .ogv file and play it in a player that supports Theora.",
+  animInfo: "Animation: {{frames}}, {{fps}} per second, {{seconds}} s, {{bones}}",
+  frameCount_one: "{{count}} frame",
+  frameCount_other: "{{count}} frames",
+  boneCount_one: "{{count}} bone",
+  boneCount_other: "{{count}} bones",
+  animNote: "Only the clip header is read: the key frames are not decoded yet, so there is nothing to play.",
 };
 
-/** Every translatable string key. */
-export type Key = keyof typeof en;
-
-const ru: Record<Key, string> = {
+const ru = {
   about: "О программе",
+  statusVersion: "Программа {{version}}",
+  statusGame: "Данные игры: {{version}}",
+  statusGameUnknown: "Данные игры: версия неизвестна",
+  statusGameRev: "Данные игры: {{version}} (r{{revision}}, {{date}})",
+  statusTotals: "Файлов: {{files}} · Архивов: {{paks}} · Размер: {{size}}",
+  statusCounting: "Считаю файлы…",
+  statusKindHint: "Нажмите на тип, чтобы увидеть все файлы этого типа",
+  statusFold: "Свернуть строку состояния",
+  statusUnfold: "Развернуть строку состояния",
+  kindOther: "прочее",
+  kindOtherTip: "Включает обычные .bin: их тип известен только после открытия файла",
+  kindListLimit: "Показаны только первые {{count}} файлов.",
+  sideCollapse: "Скрыть список файлов",
+  sideExpand: "Показать список файлов",
+  sideResize: "Изменить ширину списка (потяните или стрелки)",
   aboutTitle: "О программе Allods Data Viewer",
   close: "Закрыть",
   tagline: "Открытый просмотрщик и распаковщик ресурсов клиента игры.",
@@ -30,11 +183,181 @@ const ru: Record<Key, string> = {
   source: "Исходный код",
   legal:
     "Allods Data Viewer — независимый проект, не связанный с разработчиками и издателями игры. Ресурсов игры в нём нет. Названия игры и компаний принадлежат их владельцам.",
-  formats:
-    "Основано на описании форматов файлов; код других просмотрщиков не используется.",
+  open: "Открыть",
+  clearPath: "Очистить",
+  clearPathTip: "Закрыть открытую папку или файл и очистить список",
+  pathLabel: "Папка с данными игры или файл .pak",
+  pathPlaceholder: "Папка с данными игры или файл .pak; можно перетащить в окно",
+  language: "Язык",
+  emptyTitle: "Пока ничего не открыто",
+  emptyHint:
+    "Введите путь к папке с данными игры (в которой лежит Packs) и нажмите «Открыть» или перетащите папку или файл .pak в это окно.",
+  browserOnly:
+    "Эта страница работает только внутри настольного приложения. Запустите приложение, чтобы открыть данные игры.",
+  loading: "Загрузка…",
+  emptyFolder: "Эта папка пуста.",
+  selectFile: "Выберите файл в дереве, чтобы посмотреть его.",
+  files_one: "{{count}} файл",
+  files_few: "{{count}} файла",
+  files_many: "{{count}} файлов",
+  files_other: "{{count}} файла",
+  locFilter: "Фильтр записей по id, ключу или тексту",
+  locPrev: "Назад",
+  locNext: "Вперёд",
+  locId: "ID",
+  locKey: "Ключ",
+  locText: "Текст",
+  locRange: "{{from}}–{{to}} из {{matched}} (всего {{total}})",
+  textTruncated: "Файл длиннее, показано только его начало.",
+  imageInfo: "Картинка {{w}}×{{h}}, формат {{format}}",
+  zoomLabel: "Масштаб",
+  zoomFit: "по окну",
+  sizeGuessed:
+    "Размер в файле не хранится и был угадан. Если картинка выглядит неправильно, выберите другой размер:",
+  sizeLabel: "Размер",
+  sizeAuto: "Авто",
+  sizeCycleHint: "Ctrl+клик: следующий размер",
+  audioInfo_one: "Звуковой банк: {{count}} поток",
+  audioInfo_few: "Звуковой банк: {{count}} потока",
+  audioInfo_many: "Звуковой банк: {{count}} потоков",
+  audioInfo_other: "Звуковой банк: {{count}} потока",
+  play: "Играть",
+  stop: "Стоп",
+  channels: "кан.",
+  seconds: "с",
+  hertz: "Гц",
+  binaryInfo: "Двоичный файл, {{size}}. Первые байты:",
+  unnamedStream: "Поток {{n}}",
+  errBadPath: "Недопустимый путь.",
+  errNotFound: "Файл или папка не найдены.",
+  errWrongKind: "Этот элемент так использовать нельзя.",
+  errFailed: "Операция не удалась.",
+  errNoSession: "Сначала откройте папку.",
+  errUnknown: "Что-то пошло не так.",
+  errDetails: "Подробности",
+  kindText: "текст",
+  kindTexture: "текстура",
+  kindAudio: "звук",
+  kindVideo: "видео",
+  kindDatabase: "база данных",
+  archive: "архив",
+  opened: "Открыто",
+  modelInfo: "Модель: {{vertices}}, {{triangles}}",
+  vertexCount_one: "{{count}} вершина",
+  vertexCount_few: "{{count}} вершины",
+  vertexCount_many: "{{count}} вершин",
+  vertexCount_other: "{{count}} вершины",
+  triangleCount_one: "{{count}} треугольник",
+  triangleCount_few: "{{count}} треугольника",
+  triangleCount_many: "{{count}} треугольников",
+  triangleCount_other: "{{count}} треугольника",
+  modelNoteTitle: "О показе модели",
+  modelNote:
+    "Показана без текстур: как модели ссылаются на текстуры, пока неизвестно. Направления осей угаданы; если модель лежит на боку, включите «Ось Z вверх».",
+  wireframe: "Каркас",
+  zUp: "Ось Z вверх",
+  resetView: "Сбросить вид",
+  webglMissing: "3D-просмотр недоступен: не удалось запустить WebGL.",
+  searchLabel: "Поиск по имени файла",
+  searchPlaceholder: "Поиск по имени файла…",
+  noResults: "Ничего не найдено.",
+  crumbRoot: "Данные",
+  crumbsLabel: "Путь",
+  folderUp: "На уровень выше",
+  hideJunk: "Скрывать папки Mods и addons",
+  searchScope: "Только в выбранной папке",
+  searchScopeNamed: "Только в: {{name}}",
+  searchInTexts: "Искать и внутри текстов",
+  searchInTextsTip: "Просматривает текстовые файлы и .loc; на большой папке игры может занять время",
+  textHitsTitle: "В текстах",
+  textHitsLimit: "Показаны только первые {{count}} совпадений в текстах; уточните запрос.",
+  foundCount: "Найдено: {{count}}",
+  resultsLimit: "Показаны только первые {{count}} совпадений; уточните запрос.",
+  openFolder: "Открыть папку…",
+  openFile: "Открыть файл .pak…",
+  saveRaw: "Сохранить файл как…",
+  savePng: "Сохранить как PNG…",
+  saveWav: "Сохранить WAV…",
+  saveObj: "Сохранить как OBJ…",
+  saved: "Сохранено: {{path}}",
+  filterPak: "Архив Allods",
+  filterPng: "Картинка PNG",
+  filterWav: "Звук WAV",
+  filterObj: "Модель OBJ",
+  filterAll: "Все файлы",
+  showLabel: "Показать",
+  showAll: "Всё",
+  showText: "Текст",
+  showTexture: "Текстуры",
+  showModel: "Модели",
+  showAudio: "Звук",
+  showVideo: "Видео",
+  showDatabase: "Базы данных",
+  sortLabel: "Сортировка",
+  sortName: "По имени",
+  sortSize: "По размеру",
+  sortKind: "По типу",
+  kindModel: "модель",
+  saveTxt: "Сохранить как текст (.txt)…",
+  saveHtml: "Сохранить как веб-страницу (.html)…",
+  saveXml: "Сохранить как XML (.xml)…",
+  filterTxt: "Текстовый файл",
+  filterHtml: "Веб-страница",
+  filterXml: "XML-файл",
+  saveGlb: "Сохранить как glTF (.glb)…",
+  filterGlb: "Модель glTF",
+  kindAnimation: "анимация",
+  showAnimation: "Анимации",
+  videoSize: "Видео: {{width}} x {{height}}",
+  videoFps: "{{fps}} кадров в секунду",
+  videoLength: "{{seconds}} с",
+  videoNote: "Видео Theora. Окно показывает только заголовок; сохраните файл через «Сохранить файл как…» и откройте его в проигрывателе с поддержкой Theora.",
+  animInfo: "Анимация: {{frames}}, {{fps}} в секунду, {{seconds}} с, {{bones}}",
+  frameCount_one: "{{count}} кадр",
+  frameCount_few: "{{count}} кадра",
+  frameCount_many: "{{count}} кадров",
+  frameCount_other: "{{count}} кадра",
+  boneCount_one: "{{count}} кость",
+  boneCount_few: "{{count}} кости",
+  boneCount_many: "{{count}} костей",
+  boneCount_other: "{{count}} кости",
+  animNote: "Прочитан только заголовок клипа: кадры анимации пока не расшифрованы, проигрывать нечего.",
 };
 
-const dictionaries: Record<Lang, Record<Key, string>> = { en, ru };
+/** Plural suffixes used by i18next. */
+type PluralSuffix = "zero" | "one" | "two" | "few" | "many" | "other";
+
+/** Every translatable string key; plural forms (`files_one`, `files_few`, ...) share one key. */
+export type Key = keyof typeof en extends infer K
+  ? K extends `${infer Base}_${PluralSuffix}`
+    ? Base
+    : K
+  : never;
+
+/** Raw resources, for tests and tooling. */
+export const resources: Record<Lang, Record<string, string>> = { en, ru: ru as Record<string, string> };
+
+/** One i18next instance per language, created once; initialisation is synchronous. */
+const instances: Record<Lang, I18n> = { en: make("en"), ru: make("ru") };
+
+function make(lng: Lang): I18n {
+  const instance = createInstance();
+  void instance.init({
+    lng,
+    fallbackLng: false,
+    resources: { [lng]: { translation: resources[lng] } },
+    // Text is always inserted with `textContent` or escaped by the caller.
+    interpolation: { escapeValue: false },
+    initAsync: false,
+    returnNull: false,
+  });
+  return instance;
+}
+
+/** All translation keys, for tests and tooling. */
+export const keys: Key[] = [
+  ...new Set(Object.keys(en).map((k) => k.replace(/_(zero|one|two|few|many|other)$/, ""))),
+] as Key[];
 
 /** Pick a supported language from the browser's preference list, English by default. */
 export function detectLang(languages: readonly string[]): Lang {
@@ -46,7 +369,13 @@ export function detectLang(languages: readonly string[]): Lang {
   return "en";
 }
 
-/** Look up a string in the given language. */
-export function t(lang: Lang, key: Key): string {
-  return dictionaries[lang][key];
+/**
+ * Look up a string. Placeholders are written `{{name}}`; a numeric `count` value picks the
+ * plural form of the language (`key_one`, `key_few`, `key_many`, `key_other`).
+ */
+export function t(lang: Lang, key: Key, values: Record<string, string | number> = {}): string {
+  return instances[lang].t(key, values);
 }
+
+/** Same as [`t`]; kept for call sites that always pass values. */
+export const tf = t;

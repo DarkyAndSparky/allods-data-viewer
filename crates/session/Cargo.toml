@@ -1,0 +1,19 @@
+[package]
+name = "adv-session"
+description = "Virtual file system over a game data folder and its .pak archives, for the desktop app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+adv-core = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+zip = { workspace = true }
+
+[lints]
+workspace = true

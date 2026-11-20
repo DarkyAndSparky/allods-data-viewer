@@ -19,7 +19,8 @@ jobs:
         with:
           node-version: "26"
       - run: node scripts/check-repo.mjs
-      - run: node --test scripts/guard.test.mjs scripts/check-repo.test.mjs
+      - run: node --test scripts/guard.test.mjs scripts/check-repo.test.mjs scripts/version.test.mjs
+      - run: node scripts/version.mjs check
 
   rust-audit:
     runs-on: ubuntu-latest
