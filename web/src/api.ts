@@ -57,6 +57,8 @@ export interface Stream {
 
 export type Preview =
   | { kind: "text"; text: string; truncated: boolean }
+  | { kind: "bev"; version: number; project: string; languages: string[]; chunks: [string, number][]; names: string[]; paths: string[] }
+  | { kind: "svg"; svg: string; source: string; removed: number; removed_names: string[] }
   | { kind: "loc"; count: number; keys: boolean }
   | {
       kind: "image";
@@ -80,6 +82,17 @@ export interface AppError {
   detail: string;
 }
 
+/** Size, subsampling, rate and length of a video, from `video_open`. */
+export interface VideoInfo {
+  width: number;
+  height: number;
+  chroma_shift_x: number;
+  chroma_shift_y: number;
+  fps: number;
+  frames: number;
+  frame_bytes: number;
+}
+
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 /** Normalises whatever a failed call threw into an [`AppError`]. */
@@ -96,13 +109,30 @@ export function insideApp(w: object = window): boolean {
   return "__TAURI_INTERNALS__" in w;
 }
 
+/**
+ * Wraps `invoke` so `onChange` learns how many calls are pending (for the activity bar).
+ */
+export function trackBusy(invoke: Invoke, onChange: (pending: number) => void): Invoke {
+  let pending = 0;
+  return async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    pending += 1;
+    onChange(pending);
+    try {
+      return await invoke<T>(command, args);
+    } finally {
+      pending -= 1;
+      onChange(pending);
+    }
+  };
+}
+
 export function makeApi(invoke: Invoke) {
   return {
     openPath: (path: string) => invoke<string>("open_path", { path }),
     listDir: (path: string) => invoke<Item[]>("list_dir", { path }),
     saveAs: (args: {
       path: string;
-      format: "raw" | "png" | "wav" | "obj" | "glb" | "txt" | "html" | "xml";
+      format: "raw" | "png" | "wav" | "mp3" | "obj" | "glb" | "txt" | "html" | "xml";
       dest: string;
       textureIndex?: number;
       index?: number;
@@ -129,6 +159,10 @@ export function makeApi(invoke: Invoke) {
       invoke<ArrayBuffer>("get_image", { path, textureIndex: textureIndex ?? null }),
     mesh: (path: string) => invoke<ArrayBuffer>("get_mesh", { path }),
     audio: (path: string, index: number) => invoke<ArrayBuffer>("get_audio", { path, index }),
+    videoOpen: (path: string) => invoke<VideoInfo>("video_open", { path }),
+    videoAudio: (path: string) => invoke<ArrayBuffer>("video_audio", { path }),
+    videoFrames: (path: string, start: number, count: number) =>
+      invoke<ArrayBuffer>("video_frames", { path, start, count }),
   };
 }
 

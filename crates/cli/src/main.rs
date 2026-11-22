@@ -210,6 +210,13 @@ enum DbCommand {
     },
 }
 
+/// Output format of `adv audio export`.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum AudioFormat {
+    Wav,
+    Mp3,
+}
+
 #[derive(Subcommand)]
 enum AudioCommand {
     /// List the streams of a bank: name, rate, channels, duration.
@@ -227,6 +234,9 @@ enum AudioCommand {
         /// Use this `vgmstream-cli` instead of the built-in decoder (also `ADV_VGMSTREAM`).
         #[arg(long)]
         vgmstream: Option<PathBuf>,
+        /// Output format: `wav` (lossless, default) or `mp3` (320 kbps, or 160 kbps for rates up to 24 kHz).
+        #[arg(long, value_enum, default_value_t = AudioFormat::Wav)]
+        format: AudioFormat,
     },
 }
 
@@ -993,8 +1003,9 @@ fn run(command: Command) -> Result<u8, String> {
         } => {
             let bank = load_bank(&file)?;
             println!(
-                "Streams: {} (FSB5 version {}, codec mode {})",
+                "Streams: {} ({} version {}, codec mode {})",
                 bank.streams.len(),
+                if bank.fsb4 { "FSB4" } else { "FSB5" },
                 bank.version,
                 bank.mode
             );
@@ -1016,12 +1027,16 @@ fn run(command: Command) -> Result<u8, String> {
                     file,
                     output,
                     vgmstream,
+                    format,
                 },
         } => {
             let bytes = unwrap_bank_file(&file)?;
             std::fs::create_dir_all(&output).map_err(|e| format!("{}: {e}", output.display()))?;
             let external =
                 vgmstream.or_else(|| std::env::var_os("ADV_VGMSTREAM").map(PathBuf::from));
+            if external.is_some() && format == AudioFormat::Mp3 {
+                return Err("--format mp3 works with the built-in decoder only".to_owned());
+            }
             let Some(tool) = external else {
                 let bank = parse_bank(&bytes, &Limits::default()).map_err(|e| e.to_string())?;
                 let (mut done, mut failed) = (0usize, 0usize);
@@ -1037,10 +1052,22 @@ fn run(command: Command) -> Result<u8, String> {
                             }
                         })
                         .collect();
-                    let target = output.join(format!("{safe}_{}.wav", i + 1));
-                    match bank.decode(&bytes, i) {
-                        Ok(pcm) => {
-                            std::fs::write(&target, pcm.to_wav())
+                    let ext = if format == AudioFormat::Mp3 {
+                        "mp3"
+                    } else {
+                        "wav"
+                    };
+                    let target = output.join(format!("{safe}_{}.{ext}", i + 1));
+                    let encoded = bank.decode(&bytes, i).and_then(|pcm| {
+                        if format == AudioFormat::Mp3 {
+                            pcm.to_mp3()
+                        } else {
+                            Ok(pcm.to_wav())
+                        }
+                    });
+                    match encoded {
+                        Ok(data) => {
+                            std::fs::write(&target, data)
                                 .map_err(|e| format!("{}: {e}", target.display()))?;
                             done += 1;
                         }

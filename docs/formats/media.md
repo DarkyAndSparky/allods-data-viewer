@@ -31,7 +31,7 @@ Checked on 2026-11-10 with real `.bsb`, `.fsb` and `.ogv` files.
 ## Video
 
 - `.ogv` files are Ogg containers stored uncompressed (zip method 0) in `Video.pak`.
-- Verified on two files: each has **one Theora stream and no audio stream**. Header:
+- Verified on two files (the first ones checked): each has **one Theora stream and no audio stream**. Other videos (`BossDeath`, `ImperiaIntro`, `LeagueIntro`, `Armand`, reported by the maintainer 2026-11-21) carry a second logical stream with sound. Header:
   Theora 3.2.1, frame 1280 x 720, 30000/1001 (29.97) frames per second.
 
 ## Video header reader (2026-11-16, `adv_core::ogv`)
@@ -44,3 +44,21 @@ of the last page of the stream: `(position >> shift) + (position & mask)`, plus 
 3.2.1. Status: header fields `verified` on the two real files before; the **length is not checked on a real
 file yet** (synthetic tests only). No frame is decoded: Chromium-based WebView2 cannot play Theora, so the
 window offers saving the file.
+
+## In-window video playback (0.1.63, `adv_core::video`)
+
+Status: `verified` on one real file (`Intro.ogv`, 1280 x 720, 4:2:0, 73 frames; every frame decoded, frame 60 checked by eye), `draft` for 4:2:2 / 4:4:4 and for pictures with a crop offset (no sample seen).
+
+- Container: Ogg pages are split into packets by the lacing values; only the first stream whose first packet is `0x80 "theora"` is used; page checksums are not verified; packet size and count obey the core limits.
+- Pictures: decoded by the `theora-rs` crate 0.1.0 (MPL-2.0, a Rust port of libtheora). A panic inside the decoder is turned into an error. Frames leave the core as planar YCbCr cropped to the picture region; the page converts them to RGB (BT.601, limited range).
+- The decoder keeps its position, so playing forward costs one decode per frame; seeking back restarts from frame 0 (the intro decodes at roughly 500 frames per second in a release build).
+- Limits: picture side at most 8192 and area at most 33.5 million pixels.
+- Not verified: playback inside the Windows window (WebView2), long videos, memory use on 4K files.
+
+## Sound of `.ogv` (2026-11-22, `draft`)
+
+The soundtrack is a standard Vorbis stream in its own logical Ogg stream (first packet `0x01 "vorbis"`). The
+identification header gives channels (byte 11), rate (bytes 12..15) and the two block sizes (low and high
+nibble of byte 28, as powers of two); the third packet is the setup header, later packets are audio. The
+decoder of FSB Vorbis is reused with those block sizes. Checked on a synthetic file (440 Hz, mono, 16 kHz)
+made with ffmpeg; **not yet checked on a real game video** (samples with sound were not available here).

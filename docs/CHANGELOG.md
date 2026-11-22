@@ -5,6 +5,186 @@ Rule: every new build adds its section here before the archive is made (see [VER
 
 Entries for 0.1.14 to 0.1.44 were rebuilt from the delivery messages of the project chat (2026-11-19); where a message gave no detail the entry says so.
 
+## 0.1.73
+
+### Added
+- Archives `.7z`, `.xz`, `.tar.xz`, `.txz` open as folders (`adv_core::archive`: `Kind::SevenZ`, `TarXz`, `Xz`, `SevenZArchive`).
+- Dependencies `lzma-rust2` 0.25.0 (2026-11-01, Apache-2.0) and `sevenz-rust2` 0.25.0 (2026-11-06, Apache-2.0), both pure Rust, `default-features = false`; dev features `encoder`/`compress` for the tests.
+- Tests: names of the kinds, `.tar.xz` and `.xz`, every cut and a damaged byte of an xz stream, inflate cap, `.7z` listing and reading, unsafe path skipped, every cut and every damaged byte of a `.7z` (no panic).
+- `docs/THIRD-PARTY.md`, `docs/DEPENDENCIES.md` and the list in the app got the two components.
+
+### Known
+- Not checked on real `.7z`/`.xz` files, only on synthetic ones; not checked in the app.
+- `.7z` with AES, bzip2, ppmd, zstd or brotli is not read (the features are off). A solid `.7z` is decoded from the start of its block for every file.
+- `.tar.bz2` and `.rar` are not supported: no suitable crate (bzip2 0.6.1 is from 2025; `unrar` wraps non-free UnRAR code).
+
+## 0.1.72
+
+### Added
+- `.bev` files (FMOD Designer `FEV ` projects, zlib) are previewed: format version, project name, languages, chunk sizes, plain names and event/wave paths from the string table (`adv_core::bev`, preview kind `bev`). The labels come from the interface language files (ru and en). The event data (`LGCY`, `EPRP`, `OBCT`) is listed by size and not decoded.
+- Tests: project, languages and strings (plain and zlib), data without a container, every cut of the file and of the zlib stream, a damaged string table (count too large, offset outside, huge count), a chunk past the end, random damage (2000 files), inflate cap; preview of a `.bev` container and of junk named `.bev`.
+- `docs/formats/fsb4.md`: `.bev` layout.
+
+### Known
+- Checked on `VoiceDialogs03.bev` (916 strings) in the core; not checked in the app. Which event plays which sound bank is not decoded.
+- FSB4 codecs other than IMA ADPCM and raw PCM are still not supported: the only FSB4 sample is the Cloud Pirates bank (IMA, all 119 streams decode), so another codec cannot be checked.
+
+## 0.1.71
+
+### Added
+- Archives `.tar`, `.tar.gz`, `.tgz` and `.gz` open like folders in the viewer (`adv_core::archive::Archive`, no new dependency; `flate2` was already used). TAR: header checksum, octal and base-256 sizes, GNU long names, pax `path` and `size`, ustar `prefix`; directories, links and other types are skipped with a reason; unsafe paths (`..`, absolute), duplicates, over-limit entries and cut-off data are skipped with a reason; a damaged header after the first ends the listing and keeps earlier entries; a damaged first header is an error. GZ: inflated into memory with the output cap and the ratio guard; a tar inside is detected by the `ustar` signature, otherwise the file is one entry named without `.gz`.
+- Tests: list and read, empty tar, `.tar.gz`/`.tgz`/`.gz`, single gz, long names, pax, prefix, unsafe/duplicate/link entries, size limit, base-256 sizes, truncated tar, corrupted headers, gzip bomb and damage, every cut and random damage without panic, kinds by file name; session: a folder with `.tar`, `.tgz` and `.gz` is browsed and read.
+- `docs/formats/archives.md`.
+
+### Changed
+- The session opens any archive through `Archive` (ZIP/`.pak` behaviour is unchanged). Error text for a file that is not a folder or an archive lists the supported extensions.
+- `flate2` added to the dev-dependencies of `adv-session` (workspace version, tests only).
+
+### Known
+- `adv` (command line) still opens only `.pak`/`.zip`; `.7z`, `.rar`, `.tar.bz2`, `.tar.xz` need new dependencies and an owner decision.
+- Not checked in the app on Windows.
+
+## 0.1.70
+
+### Changed
+- Replaces the page-side SVG detection of 0.1.69 (removed): the file is sanitised first, the page only draws the clean copy.
+
+### Added
+- `.svg` files are sanitised in the core before they are shown (`adv_core::svg::sanitize`, no new dependency): a small XML reader, then a new document is written from allow-lists of elements (shapes, text, gradients, patterns, clip/mask, markers, filters and their primitives, `use`, `image`), attributes and values. Removed: scripts, `foreignObject`, animation (`animate`, `set`), `style` elements, `a`, `iframe` and any other element not on the list (with its content); event handlers and other attributes not on the list; links other than `#fragment` (and inline `data:image/png|jpeg|gif|webp;base64` on `image`); `url(...)` that does not point at a `#fragment`, `javascript:`, `expression(`, `@import`, backslashes in values. Files with a DOCTYPE subset or entities (other than the five XML ones and numeric ones), mismatched tags, a root other than `svg`, nesting over 128, over 200000 elements or over 4 MiB are refused and shown as text. The namespace is rewritten on the root.
+- Preview kind `svg` (clean copy, original text, number and names of removed items). The page draws the clean copy as an `<img>` (second layer: scripts and outside links do not run in an image either). Buttons Picture / Source; a line tells what was removed or that nothing had to be. Texts in ru and en.
+- Tests (core): clean file, namespace, scripts and handlers, foreign content, animation and style elements, links, `url()` values, unknown and prefixed attributes, comments/PI/DOCTYPE, CDATA and escaping, entities and entity bombs, malformed files, limits, repeated names, UTF-16, every cut and random damage of a sample without panic, nothing active in the output; preview of a dirty SVG and of a broken SVG (shown as text).
+
+### Known
+- Not checked in a browser here (type check and tests only); `adv-desktop` mapping of the new preview kind is not compiled here.
+- SVG export of scenes (M13) is separate.
+
+## 0.1.69
+
+### Added
+- `.svg` files are drawn as pictures (an `<img>` from a blob, so scripts and outside links do not run); buttons Picture / Source switch to the text; an SVG the browser cannot draw falls back to the source with a note. Only whole files qualify (the first element is `<svg`, after prolog, comments and doctype); files cut at 256 KiB stay text. Texts in ru and en.
+- Tests: SVG detection (plain, with prolog/comment/doctype/BOM, other extension, cut file, non-svg root).
+
+### Known
+- Not checked in a browser here (only type check and unit tests); SVG export of scenes (M13) is separate.
+
+## 0.1.68
+
+### Added
+- About dialog: "Components and licenses" list (name, version, licence, purpose in the interface language, link). Data in `web/src/third-party.json`.
+- `scripts/third-party.mjs generate|check`: builds the list from `cargo metadata` and `web/node_modules` (direct runtime dependencies, `@tauri-apps/api` as bundled), plus code ported into the repository (libcelt); writes `docs/THIRD-PARTY.md` with all 420 Rust packages of the build. `check` fails when the files are out of date, a direct dependency has no ru/en purpose in `scripts/third-party-purpose.json`, or a licence is not on the allowed list (an OR expression passes when one alternative is allowed). Added to `check-all.sh` and `check-all.ps1`.
+- Tests: licence expressions (`scripts/third-party.test.mjs`); the dialog lists components in both languages, escapes names, links only `https`; every component has ru and en text.
+
+## 0.1.67
+
+### Added
+- FSB5 mode 12 (CELT, FMOD CELT 0.11): decoder in `adv_core::celt` (port of libcelt 0.11, float build without the post-filter): range decoder, Laplace, PVQ/CWRS, pulse cache and band allocation, band shape decoding with stereo split and folding, anti-collapse, inverse MDCT, de-emphasis. Used by `Voice_*.bsb` of 18.0 clients and `Ambience_*.fsb`; works in the viewer, `adv audio export` (WAV and MP3).
+- FMOD packet framing (`0xf30dc317`, size, packet) and frame size detection from the packet count.
+- Tests: zero packet gives a full frame, mono frame, truncated packet, unsupported layouts, damaged packets of several modes do not panic; framed stream, header length wins over whole frames, frame size from packet count, cut-off or unframed stream is an error.
+- NOTICE entry for the Xiph BSD code.
+
+### Changed
+- Error for FSB5 mode 12 no longer says "not supported"; other unsupported codecs keep the codec name in the error.
+
+### Known
+- Checked against the C reference on one Voice stream (max difference 1 LSB) and by decoding 477 streams of 6 Voice banks without errors; `Ambience_*.fsb` were not available for the check; not compared by ear with the game.
+- Packets with the post-filter flag are rejected as corrupted (not seen in samples).
+
+## 0.1.66
+
+### Added
+- Sound of `.ogv` videos: the Vorbis track of the Ogg file is decoded in the core (`adv_core::video::ogg_audio`, block sizes taken from the identification header, so any standard libvorbis stream works), sent to the page as WAV (`video_audio` call and command) and played next to the picture; while it plays it is the clock of the picture (frames follow `currentTime`), after its end the wall clock continues. A video without sound plays as before.
+- Loop checkbox for the video player and for the bottom sound player.
+- Tests: tiny synthetic video with a 440 Hz mono track (ffmpeg, kept as hex): rate, channels, length, frequency; no track in a silent video; truncated and corrupted files do not panic.
+
+### Changed
+- Video layout: the picture is scaled to the free height of the window (aspect kept), controls are under it, the video line (size, rate, length, frames) is under the controls.
+- All file views: the file name is a smaller bold line, the save buttons are a bar under the data that stays at the bottom of the view.
+- Starting a video pauses the bottom sound player and clears the old error message.
+
+### Fixed
+- Changing the language added another title, sound control and close button to the bottom player each time (it was filled again without being cleared).
+
+### Known
+- Not verified: sound sync on Windows (checked in Chromium without sound, with a stub for the app calls), `adv-desktop` compile.
+- Video export to MKV, settings page, SVG, archive and office viewers, CELT are still open.
+
+## 0.1.65
+
+### Fixed
+- FSB5 channel layout: bits 5..6 of the sample mode word are read as a field (0 = mono, 1 = stereo, 2 = 6 channels, 3 = 8 channels). Music banks of 18.0 clients store adaptive and some other tracks as 6-channel Vorbis; they were read as mono and decoded as noise (`Siege_warfare_adaptive`, `NihazAdaptive`, `JungleAdaptive`, `IllusionWorldAdaptive`, `Conquer_adaptive`, `ASS_Battle01`). Checked on the maintainer's samples: smooth output, no clipping.
+- Video player: a negative frame index could be requested after Play (`invalid args 'start' ... integer '-1'`); the playback clock now never goes below its start.
+
+### Changed
+- WAV with more than two channels is written with the WAVE_FORMAT_EXTENSIBLE header and a speaker mask (6 channels: 5.1, 8 channels: 7.1).
+- MP3 export of sounds with 3 to 16 channels mixes them down to stereo (5.1/7.1 by the usual layout without the low-frequency channel; other counts: even channels left, odd right); documented as a lossy step. A channel count from a chunk of type 1 (for example 10) is used as is.
+
+### Known
+- FSB5 mode 12 (CELT): `Ambience_TP.fsb`, `Ambience_ForestSpring.fsb`, `Voice_*.bsb` of 18.0 clients are still not decoded. A reference decoder of the old CELT bitstream (libcelt 0.11, from the Xiph history) decodes the voice streams, so a port is possible.
+- The sound of `.ogv` videos is not played yet; no LOOP option; the video layout does not fit the window yet (reported by the maintainer, planned).
+- `NoSOUND` streams are 0.06 s of silence at 8000 Hz (valid, not damaged).
+- Not verified: `adv-desktop` compile; playback of 6-channel WAV in the Windows window.
+
+## 0.1.64
+
+### Fixed
+- FSB5 data offset: bit 6 of the sample mode word no longer counts as part of the offset (offset is bits 7..33 in units of 32 bytes). Mono music banks with that bit set (`Music_ASS.fsb`, `Music_Astral_hangar.fsb`) read their first packet 16 bytes late and decoded to a few hundred samples while reporting success; they now decode to full length, as do all 90 streams of `Music_Zone.fsb`.
+- A Vorbis stream that ends before 98% of its declared length is now an error instead of a short successful file.
+- WAV and MP3 buttons of a sound-bank stream propose the stream name as the file name (was the bank name for every stream).
+
+### Changed
+- Sound banks: Play, Save WAV and Save MP3 have a fixed width (long labels are cut), long stream names are cut with the full name in a tooltip.
+- One sound player is pinned to the bottom of the window, above the status bar (title of the playing stream, spinner while decoding, close button); playing continues while browsing other files.
+- Error text for unsupported FSB5 codecs names the codec (for example "CELT (FSB5 mode 12)").
+
+### Known
+- FSB5 mode 12 (CELT), used by the `Voice_*.bsb` banks of 18.0 clients, is not decoded (documented in `docs/formats/vorbis-fsb.md`).
+- Not verified: `adv-desktop` compile; the bottom player in the Windows window (checked in Chromium with a stub).
+
+## 0.1.63
+
+### Added
+- In-window video playback for `.ogv` (Theora): canvas player with Play/Pause, a position slider and a time label; frames are decoded in the app and converted on the page. New core module `adv_core::video` (Ogg packet reader with limits, Theora decoding, planar YCbCr frames), session calls `video_open` and `video_frames`, commands of the same names in `adv-desktop`.
+- Dependency `theora-rs` 0.1.0 (MPL-2.0, released 2026-10-08, no runtime dependencies), approved by the maintainer; NOTICE updated.
+- Activity indicators: a bar at the top of the window appears when an app call stays pending for more than 0.3 s; a spinner shows while the player loads frames.
+- Tests: tiny synthetic Theora video (made with ffmpeg from its test pattern, kept as hex in `video_fixture.rs`): geometry and frame count, rewind, truncated and corrupted files (no panics), oversize picture refused; web tests for the YCbCr to RGB conversion.
+- Strings `videoPlay`, `videoPause`, `videoBuffering`, `videoPosition`, `videoFailed` (ru, en); `videoNote` now says playback is available in the app only.
+
+### Not verified
+- `adv-desktop` (`video_open`, `video_frames`) was not compiled here; playback inside the Windows window; behaviour on long or 4K videos. The player was checked in Chromium with synthetic frames; the decoder on the real `Intro.ogv` (73 frames, one frame viewed).
+
+## 0.1.62
+
+### Added
+- MP3 export of sounds: `adv audio export --format mp3` (default `wav`), "Save MP3" button next to each stream in the app, `Session::audio_mp3`, `save_as` format `mp3`. Highest constant bitrate for the sample rate (320 kbps for 32/44.1/48 kHz, 160 kbps for MPEG-2 rates). Rates MP3 cannot carry and more than two channels are refused with a message. `--format mp3` is not available with `--vgmstream`.
+- Dependency `rusty_mp3` 1.1.0 (Apache-2.0, released 2026-11-19, no runtime dependencies), approved by the maintainer.
+- Tests: stereo tone round trip (length, rate, signal-to-noise), mono MPEG-2 rate, refused rate/channels/empty sound, 10-sample sound. Real streams: signal-to-noise 34.5 to 51.5 dB (see `docs/formats/mp3-export.md`).
+- Strings `saveMp3`, `filterMp3` (ru, en).
+
+### Not verified
+- `adv-desktop` (`save_as` with `mp3`) was not compiled here; no listening test; Windows run.
+
+## 0.1.61
+
+### Added
+- FSB4 sound banks (Cloud Pirates `.bsb`/`.fsb`): list, player and WAV export (`adv audio list/export`, the app). Codecs: IMA ADPCM (mono verified on a real bank, all 119 streams decode) and raw PCM 8/16-bit (draft). Other codecs fail with their mode value. Tests: synthetic success (step rule, length cut, stereo order, PCM), refused codec, truncated and corrupted banks, damaged step index.
+- README.md and README.ru.md: the install and build guide (Windows and Linux) moved in from the maintainer's INSTALL.md; paths use `%USERPROFILE%\Downloads\BUILDS` and `<version>`; the developer section is now "Develop and test".
+- `docs/formats/fsb4.md`, with a note on `.bev` (zlib, FMOD Designer `FEV FMT` project; not parsed yet).
+
+### Changed
+- `adv audio list` prints the bank kind (FSB4 or FSB5).
+- Not verified: stereo block order, raw PCM, in-app playback of an FSB4 stream on Windows.
+
+## 0.1.60
+
+### Changed
+- Model viewer: the start and "reset view" camera distance is computed from the bounding sphere and the field of view for both the height and the width of the window, so a model fits a narrow window too (before, a fixed multiple of the radius was used). The layout is measured before the first camera placement.
+- Not verified: no WebGL check on a real model in this session.
+
+## 0.1.59
+
+### Added
+- Folder view: Back and Forward buttons walk through the folders opened in this view (history of up to 100 entries; opening a new folder after going back drops the forward entries). Strings in Russian and English.
+
 ## 0.1.58
 
 ### Added

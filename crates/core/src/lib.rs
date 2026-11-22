@@ -7,26 +7,35 @@
 //! Supported formats are documented in `docs/formats/`.
 
 pub mod animation;
+pub mod archive;
+pub mod bev;
 pub mod blob;
 pub mod browse;
+pub mod celt;
 pub mod db;
 pub mod db32;
 pub mod error;
 pub mod extract;
 pub mod fsb;
+pub mod fsb4;
 pub mod gamever;
 pub mod geometry;
 pub mod limits;
 pub mod loc;
+pub mod mp3;
 pub mod ogv;
 pub mod packsinfo;
 pub mod pak;
 pub mod picture;
 pub mod preview;
 pub mod skeleton;
+pub mod svg;
 pub mod tdb;
 pub mod texheur;
 pub mod texture;
+pub mod video;
+#[cfg(test)]
+mod video_fixture;
 pub mod vorbis;
 mod vorbis_setups;
 pub mod vpath;

@@ -1,6 +1,8 @@
 import pkg from "../package.json";
 import { renderAbout } from "./about";
-import { insideApp, makeApi, type Census, type GameVersion, toAppError, type Api, type AppError, type Invoke, type Item, type Kind, type LocPage, type Preview } from "./api";
+import thirdParty from "./third-party.json";
+import { createPlayer, type Player } from "./player";
+import { insideApp, makeApi, trackBusy, type Census, type GameVersion, toAppError, type Api, type AppError, type Invoke, type Item, type Kind, type LocPage, type Preview } from "./api";
 import { tauriDialogs, withExtension, type Dialogs } from "./dialogs";
 import { h } from "./dom";
 import { formatBytes } from "./format";
@@ -48,8 +50,12 @@ export class App {
   private selected = "";
   /** Folder shown in the main view (Explorer-like), or "" when a file or nothing is shown. */
   private folderView: string | null = null;
+  /** Folders opened in the folder view, with the position of the one shown (back/forward). */
+  private folderHistory: string[] = [];
+  private folderPos = -1;
   private urls: string[] = [];
-  private audio: HTMLAudioElement | null = null;
+  private player: Player | null = null;
+  private busyTimer: number | null = null;
   private viewer: ModelViewer | null = null;
   private tree = h("div", { class: "tree", attrs: { role: "tree" } });
   private results = h("div", { class: "results", attrs: { hidden: "" } });
@@ -69,6 +75,14 @@ export class App {
   private gameVer: GameVersion | null = null;
   private kindView: string | null = null;
   private stats = h("footer", { class: "statusbar" });
+  /** The sound player pinned to the bottom of the window, shared by every sound bank. */
+  private dockAudio = h("audio", { attrs: { controls: "" } }) as HTMLAudioElement;
+  private dockTitle = h("span", { class: "dock-title" });
+  private dockSpinner = h("span", { class: "spinner small", attrs: { role: "status", hidden: "" } });
+  private dock = h("div", { class: "dock", attrs: { hidden: "" } });
+  private dockLoopBox = h("input", { attrs: { type: "checkbox" } }) as HTMLInputElement;
+  private dockLoopText = h("span");
+  private dockLoop = h("label", { class: "loop" }, this.dockLoopBox, this.dockLoopText);
   private view = h("section", { class: "view" });
   private error = h("div", { class: "error", attrs: { role: "alert", hidden: "" } });
   private notice = h("div", { class: "notice", attrs: { role: "status", hidden: "" } });
@@ -82,7 +96,20 @@ export class App {
   ) {
     const stored = saved("lang");
     this.lang = stored === "ru" || stored === "en" ? stored : detectLang(languages);
-    this.api = invoke ? makeApi(invoke) : null;
+    this.api = invoke ? makeApi(trackBusy(invoke, (n) => this.setBusy(n))) : null;
+  }
+
+  /** Shows the activity bar when calls stay pending for more than a short moment. */
+  private setBusy(pending: number): void {
+    if (pending > 0) {
+      if (this.busyTimer === null) {
+        this.busyTimer = window.setTimeout(() => document.body.classList.add("busy"), 300);
+      }
+      return;
+    }
+    if (this.busyTimer !== null) window.clearTimeout(this.busyTimer);
+    this.busyTimer = null;
+    document.body.classList.remove("busy");
   }
 
   /** Builds the window. */
@@ -270,6 +297,7 @@ export class App {
       lang,
       repoUrl: REPO_URL,
       logoSrc: `${this.base}logo.png`,
+      components: thirdParty.components,
     });
     dialog.addEventListener("click", (e) => {
       if (e.target === dialog) dialog.close();
@@ -397,6 +425,7 @@ export class App {
         this.makeSplitter(),
         this.view,
       ),
+      this.makeDock(),
       this.stats,
       dialog,
     );
@@ -514,15 +543,15 @@ export class App {
     label: Key,
     filter: Key,
     ext: string,
-    format: "raw" | "png" | "wav" | "obj" | "glb" | "txt" | "html" | "xml",
+    format: "raw" | "png" | "wav" | "mp3" | "obj" | "glb" | "txt" | "html" | "xml",
     path: string,
-    extra: { textureIndex?: number; index?: number } = {},
+    extra: { textureIndex?: number; index?: number; name?: string } = {},
   ): HTMLElement {
-    const btn = h("button", { class: "btn", text: this.tr(label), attrs: { type: "button" } });
+    const btn = h("button", { class: "btn", text: this.tr(label), attrs: { type: "button", title: this.tr(label) } });
     btn.disabled = !this.dialogs;
     btn.addEventListener("click", async () => {
       if (!this.api || !this.dialogs) return;
-      const name = format === "raw" ? baseName(path) : withExtension(baseName(path), ext);
+      const name = format === "raw" ? baseName(path) : withExtension(extra.name ?? baseName(path), ext);
       const filters = [{ name: this.tr(filter), extensions: [ext] }];
       const dest = await this.dialogs.saveTo(name, filters);
       if (!dest) return;
@@ -882,14 +911,92 @@ export class App {
     return u;
   }
 
+  /**
+   * An SVG file. The core has already sanitised it (allow-list of elements and attributes); the page
+   * draws that clean copy as an image, where scripts and outside links do not run either.
+   * The original text is one click away.
+   */
+  private svgView(path: string, svg: string, source: string, removed: number, names: string[]): HTMLElement {
+    const pictureBtn = h("button", { class: "btn", text: this.tr("svgPicture"), attrs: { type: "button" } });
+    const sourceBtn = h("button", { class: "btn", text: this.tr("svgSource"), attrs: { type: "button" } });
+    const note = h("p", { class: "muted" });
+    const img = h("img", {
+      class: "picture",
+      attrs: { src: this.blobUrl(new TextEncoder().encode(svg).buffer, "image/svg+xml"), alt: baseName(path) },
+    });
+    const original = h("pre", { class: "text", text: source });
+    const show = (picture: boolean): void => {
+      img.hidden = !picture;
+      original.hidden = picture;
+    };
+    img.addEventListener("error", () => {
+      note.textContent = this.tr("svgBroken");
+      show(false);
+    });
+    pictureBtn.addEventListener("click", () => {
+      note.textContent = "";
+      show(true);
+    });
+    sourceBtn.addEventListener("click", () => show(false));
+    show(true);
+    const cleaned =
+      removed > 0
+        ? h("p", { class: "muted", text: tf(this.lang, "svgCleaned", { n: removed, names: names.join(", ") }) })
+        : h("p", { class: "muted", text: this.tr("svgClean") });
+    return h("div", {}, h("div", { class: "toolbar" }, pictureBtn, sourceBtn), cleaned, note, img, original);
+  }
+
   private closeViewer(): void {
     this.viewer?.dispose();
     this.viewer = null;
   }
 
+  /** The in-window player for a video; the app decodes, the page only converts and shows. */
+  private videoPlayer(path: string): HTMLElement {
+    const api = this.api;
+    if (!api) return h("p", { class: "muted", text: this.tr("videoNote") });
+    this.player?.dispose();
+    this.player = createPlayer({
+      open: () => api.videoOpen(path),
+      frames: (start, count) => api.videoFrames(path, start, count),
+      audio: () => api.videoAudio(path),
+      onPlay: () => {
+        this.dockAudio.pause();
+        this.clearError();
+      },
+      label: (key) => this.tr(key),
+    });
+    return this.player.el;
+  }
+
+  private makeDock(): HTMLElement {
+    const close = h("button", { class: "btn", text: "×", attrs: { type: "button" } });
+    close.addEventListener("click", () => {
+      this.dockAudio.pause();
+      this.dock.setAttribute("hidden", "");
+    });
+    this.dockAudio.loop = false;
+    this.dockLoopBox.addEventListener("change", () => {
+      this.dockAudio.loop = this.dockLoopBox.checked;
+    });
+    this.dock.replaceChildren(this.dockTitle, this.dockSpinner, this.dockAudio, this.dockLoop, close);
+    this.refreshDockLabels();
+    return this.dock;
+  }
+
+  private refreshDockLabels(): void {
+    this.dockLoopText.textContent = this.tr("loop");
+    const close = this.dock.lastElementChild;
+    if (close) {
+      close.setAttribute("title", this.tr("closePlayer"));
+      close.setAttribute("aria-label", this.tr("closePlayer"));
+    }
+    this.dockSpinner.setAttribute("aria-label", this.tr("audioLoading"));
+  }
+
   private stopAudio(): void {
-    this.audio?.pause();
-    this.audio = null;
+    this.player?.dispose();
+    this.player = null;
   }
 
   /** Clickable path: the data root and every folder of `path` (`withLast` includes the last part). */
@@ -912,8 +1019,14 @@ export class App {
   }
 
   /** Explorer-like view of one folder in the main area: crumbs, "up" and the folder's contents. */
-  private async showFolder(path: string): Promise<void> {
+  private async showFolder(path: string, record = true): Promise<void> {
     if (!this.api) return;
+    if (record && this.folderHistory[this.folderPos] !== path) {
+      this.folderHistory = this.folderHistory.slice(0, this.folderPos + 1);
+      this.folderHistory.push(path);
+      if (this.folderHistory.length > 100) this.folderHistory.shift();
+      this.folderPos = this.folderHistory.length - 1;
+    }
     this.folderView = path;
     this.selected = "";
     this.clearError();
@@ -928,6 +1041,18 @@ export class App {
       if (this.hideJunk) items = items.filter((i) => !(i.is_dir && isJunkName(i.name)));
       items = sortItems(filterItems(withKinds(items, this.kinds, path), this.show), this.sort);
       const head = h("div", { class: "toolbar" });
+      const step = (delta: number, label: string, text: string): void => {
+        const target = this.folderHistory[this.folderPos + delta];
+        const b = h("button", { class: "btn", text, attrs: { type: "button", title: label, "aria-label": label } });
+        if (target === undefined) b.setAttribute("disabled", "");
+        b.addEventListener("click", () => {
+          this.folderPos += delta;
+          void this.showFolder(target ?? "", false);
+        });
+        head.append(b);
+      };
+      step(-1, this.tr("folderBack"), "←");
+      step(1, this.tr("folderForward"), "→");
       if (path !== "") {
         const up = h("button", { class: "btn", text: "↑ " + this.tr("folderUp"), attrs: { type: "button" } });
         up.addEventListener("click", () => void this.showFolder(path.split("/").slice(0, -1).join("/")));
@@ -992,11 +1117,12 @@ export class App {
           this.saveButton("saveObj", "filterObj", "obj", "obj", path),
         );
       }
+      actions.classList.add("actions");
       this.view.replaceChildren(
         this.crumbs(path, false),
         h("h2", { class: "file-title", text: baseName(path) }),
-        actions,
         await this.body(path, p, focusId),
+        actions,
       );
     } catch (e) {
       if (this.selected === path) {
@@ -1077,6 +1203,26 @@ export class App {
     switch (p.kind) {
       case "loc":
         return this.locViewer(path, p.count, p.keys, focusId);
+      case "bev": {
+        const hex = `0x${p.version.toString(16).toUpperCase().padStart(8, "0")}`;
+        const list = (title: string, items: string[]): HTMLElement[] => [
+          h("h3", { text: `${title} (${items.length})` }),
+          h("pre", { class: "text", text: items.join("\n") }),
+        ];
+        return h(
+          "div",
+          {},
+          h("h3", { text: this.tr("bevTitle") }),
+          h("p", { text: `${this.tr("bevProject")}: ${p.project}` }),
+          h("p", { text: `${this.tr("bevVersion")}: ${hex}` }),
+          h("p", { text: `${this.tr("bevLanguages")}: ${p.languages.join(", ")}` }),
+          ...list(this.tr("bevChunks"), p.chunks.map(([tag, size]) => `${tag}  ${size}`)),
+          ...list(this.tr("bevNames"), p.names),
+          ...list(this.tr("bevPaths"), p.paths),
+        );
+      }
+      case "svg":
+        return this.svgView(path, p.svg, p.source, p.removed, p.removed_names);
       case "text": {
         const box = h("div", {}, h("pre", { class: "text", text: p.text }));
         if (p.truncated) box.prepend(h("p", { class: "muted", text: this.tr("textTruncated") }));
@@ -1208,14 +1354,12 @@ export class App {
         return h(
           "div",
           {},
-          h("p", { text: parts.join(", ") }),
-          h("p", { class: "muted", text: this.tr("videoNote") }),
+          this.videoPlayer(path),
+          h("p", { class: "muted", text: parts.join(", ") }),
         );
       }
       case "audio": {
         const box = h("div", {}, h("p", { text: tf(this.lang, "audioInfo", { count: p.streams.length }) }));
-        const player = h("audio", { attrs: { controls: "" } });
-        this.audio = player;
         p.streams.forEach((s, i) => {
           const name = s.name || tf(this.lang, "unnamedStream", { n: i + 1 });
           const info = [
@@ -1226,25 +1370,42 @@ export class App {
             .filter((x) => x !== "")
             .join(", ");
           const btn = h("button", { class: "btn", text: this.tr("play"), attrs: { type: "button" } });
-          btn.addEventListener("click", () => void this.play(path, i, player));
-          const saveBtn = this.saveButton("saveWav", "filterWav", "wav", "wav", path, { index: i });
-          box.append(h("div", { class: "stream" }, btn, saveBtn, h("span", { class: "name", text: name }), h("span", { class: "meta", text: info })));
+          btn.addEventListener("click", () => void this.play(path, i, name));
+          const saveBtn = this.saveButton("saveWav", "filterWav", "wav", "wav", path, { index: i, name });
+          const mp3Btn = this.saveButton("saveMp3", "filterMp3", "mp3", "mp3", path, { index: i, name });
+          box.append(
+            h(
+              "div",
+              { class: "stream" },
+              btn,
+              saveBtn,
+              mp3Btn,
+              h("span", { class: "name", text: name, attrs: { title: name } }),
+              h("span", { class: "meta", text: info }),
+            ),
+          );
         });
-        box.append(player);
         return box;
       }
     }
   }
 
-  private async play(path: string, index: number, player: HTMLAudioElement): Promise<void> {
+  private async play(path: string, index: number, name: string): Promise<void> {
     if (!this.api) return;
     this.clearError();
+    this.dockTitle.textContent = name;
+    this.dockTitle.setAttribute("title", name);
+    this.dock.removeAttribute("hidden");
+    this.dockSpinner.removeAttribute("hidden");
+    this.refreshDockLabels();
     try {
       const wav = await this.api.audio(path, index);
-      player.src = this.blobUrl(wav, "audio/wav");
-      await player.play();
+      this.dockAudio.src = this.blobUrl(wav, "audio/wav");
+      await this.dockAudio.play();
     } catch (e) {
       this.showError(toAppError(e));
+    } finally {
+      this.dockSpinner.setAttribute("hidden", "");
     }
   }
 }

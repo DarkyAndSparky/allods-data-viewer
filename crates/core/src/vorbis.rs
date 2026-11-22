@@ -10,6 +10,7 @@
 
 use crate::error::{Error, Result};
 
+/// Block sizes of FMOD streams, whose headers do not carry them.
 const SHORT_BLOCK: usize = 256;
 const LONG_BLOCK: usize = 2048;
 
@@ -755,6 +756,8 @@ fn slope(len: usize) -> Vec<f64> {
 /// Decoder state for one stream.
 pub struct Decoder {
     channels: usize,
+    short_block: usize,
+    long_block: usize,
     books: Vec<Codebook>,
     floors: Vec<Floor1>,
     residues: Vec<Residue>,
@@ -772,6 +775,24 @@ impl Decoder {
     /// # Errors
     /// Returns a format error for anything outside what is supported.
     pub fn new(setup: &[u8], channels: usize) -> Result<Self> {
+        Self::with_blocks(setup, channels, SHORT_BLOCK, LONG_BLOCK)
+    }
+
+    /// Like [`Decoder::new`] with explicit block sizes (from the Vorbis identification
+    /// header of an Ogg stream). Sizes must be powers of two from 64 to 8192, short <= long.
+    ///
+    /// # Errors
+    /// Returns a format error for anything outside what is supported.
+    pub fn with_blocks(
+        setup: &[u8],
+        channels: usize,
+        short_block: usize,
+        long_block: usize,
+    ) -> Result<Self> {
+        let ok = |n: usize| (64..=8192).contains(&n) && n.is_power_of_two();
+        if !ok(short_block) || !ok(long_block) || short_block > long_block {
+            return Err(bad("unsupported block sizes"));
+        }
         if channels == 0 || channels > 8 {
             return Err(bad("unsupported channel count"));
         }
@@ -860,13 +881,15 @@ impl Decoder {
         }
         Ok(Self {
             channels,
+            short_block,
+            long_block,
             books,
             floors,
             residues,
             mappings,
             modes,
-            imdct: [Imdct::new(SHORT_BLOCK), Imdct::new(LONG_BLOCK)],
-            slopes: [slope(SHORT_BLOCK / 2), slope(LONG_BLOCK / 2)],
+            imdct: [Imdct::new(short_block), Imdct::new(long_block)],
+            slopes: [slope(short_block / 2), slope(long_block / 2)],
             prev_long: None,
             carry: vec![Vec::new(); channels],
         })
@@ -893,7 +916,11 @@ impl Decoder {
         } else {
             (false, false)
         };
-        let n = if long { LONG_BLOCK } else { SHORT_BLOCK };
+        let n = if long {
+            self.long_block
+        } else {
+            self.short_block
+        };
         let half = n / 2;
         let map = &self.mappings[mode.mapping];
         let mut floor_out: Vec<Option<Vec<f64>>> = Vec::with_capacity(self.channels);
@@ -961,14 +988,14 @@ impl Decoder {
         if long {
             let (l_len, r_len) = (
                 if prev_long {
-                    LONG_BLOCK / 2
+                    self.long_block / 2
                 } else {
-                    SHORT_BLOCK / 2
+                    self.short_block / 2
                 },
                 if next_long {
-                    LONG_BLOCK / 2
+                    self.long_block / 2
                 } else {
-                    SHORT_BLOCK / 2
+                    self.short_block / 2
                 },
             );
             let l_start = n / 4 - l_len / 2;
@@ -976,7 +1003,7 @@ impl Decoder {
                 *w = if i < l_start {
                     0.0
                 } else if i < l_start + l_len {
-                    if l_len == SHORT_BLOCK / 2 {
+                    if l_len == self.short_block / 2 {
                         short[i - l_start]
                     } else {
                         longs[i - l_start]
@@ -991,7 +1018,7 @@ impl Decoder {
                     1.0
                 } else if i < r_start + r_len {
                     let k = i - r_start;
-                    if r_len == SHORT_BLOCK / 2 {
+                    if r_len == self.short_block / 2 {
                         short[r_len - 1 - k]
                     } else {
                         longs[r_len - 1 - k]
@@ -1010,7 +1037,7 @@ impl Decoder {
         let mut produced: Vec<Vec<f64>> = Vec::with_capacity(self.channels);
         let prev_n = self
             .prev_long
-            .map(|l| if l { LONG_BLOCK } else { SHORT_BLOCK });
+            .map(|l| if l { self.long_block } else { self.short_block });
         for ch in 0..self.channels {
             let mut spectrum = res[ch].clone();
             match &floor_out[ch] {
@@ -1100,6 +1127,13 @@ pub fn decode_stream(
             }
         }
         frames += n;
+    }
+    // A stream that ends far before its declared length is damaged or mis-framed; returning
+    // the few samples decoded so far would look like a success with a tiny silent file.
+    if limit != usize::MAX && limit - frames > 4096 && frames * 100 < limit * 98 {
+        return Err(Error::format(format!(
+            "vorbis: stream ends after {frames} of {limit} samples (damaged data or unknown framing)"
+        )));
     }
     Ok(pcm)
 }

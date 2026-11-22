@@ -9,10 +9,16 @@ repository.workspace = true
 
 [dependencies]
 flate2.workspace = true
+lzma-rust2.workspace = true
+sevenz-rust2.workspace = true
 zip.workspace = true
+rusty_mp3.workspace = true
+theora-rs.workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
+lzma-rust2 = { workspace = true, features = ["encoder"] }
+sevenz-rust2 = { workspace = true, features = ["compress"] }
 
 [lints]
 workspace = true

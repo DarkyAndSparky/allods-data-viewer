@@ -43,6 +43,25 @@ pub struct Entry {
     index: usize,
 }
 
+impl Entry {
+    /// An entry of a non-ZIP archive; `index` is the reader's own number of the entry.
+    pub(crate) fn external(path: VPath, size: u64, packed_size: u64, index: usize) -> Self {
+        Self {
+            path,
+            size,
+            packed_size,
+            crc32: 0,
+            method: Method::Stored,
+            index,
+        }
+    }
+
+    /// The reader's own number of the entry.
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+}
+
 /// An entry that was not accepted, with the reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {

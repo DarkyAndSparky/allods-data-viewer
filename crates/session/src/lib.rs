@@ -4,10 +4,11 @@
 //! directory, so `Packs/Models.pak/creatures/x.bin` is a valid path. Paths use `/` and are
 //! relative to the opened root. The desktop app is a thin shell over this crate.
 
+use adv_core::archive::{Archive, Kind};
 use adv_core::browse::{FileKind, Node, build_tree, classify};
 use adv_core::loc::LocFile;
 use adv_core::preview::{self, Options, Preview};
-use adv_core::{Layer, Limits, PakArchive};
+use adv_core::{Layer, Limits};
 use adv_core::{db, db32};
 use std::collections::HashMap;
 use std::fmt;
@@ -108,7 +109,7 @@ fn game_version_text(v: &adv_core::gamever::GameVersion) -> String {
     out
 }
 
-/// Completions for a path typed in the path box: the folders and `.pak` or `.zip` files in the typed
+/// Completions for a path typed in the path box: the folders and archive files (`.pak`, `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.gz`) in the typed
 /// directory whose names start with the typed rest (ASCII case-insensitive). Folders end with
 /// the separator the user typed. Needs a separator in the input; at most 50 results, sorted.
 #[must_use]
@@ -263,7 +264,7 @@ pub fn parse_build_info(data: &[u8]) -> Option<BuildInfo> {
 }
 
 struct OpenPak {
-    pak: PakArchive<BufReader<File>>,
+    pak: Archive<BufReader<File>>,
     tree: Node,
 }
 
@@ -283,6 +284,8 @@ pub struct Session {
     base_pak: std::sync::OnceLock<Option<PathBuf>>,
     /// Texture records of the resource databases (`pack` and `Maps_<name>`), by lower-case name.
     texdbs: Mutex<HashMap<String, Arc<TextureSizes>>>,
+    /// The video the player is reading (virtual path and decoder), so frames come in order.
+    video: Mutex<Option<(String, adv_core::video::VideoStream)>>,
 }
 
 /// Where a virtual path points.
@@ -316,10 +319,10 @@ fn collect_base_paks(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// `.pak` archives and plain `.zip` files (mods, add-ons) are entered like folders.
+/// `.pak` archives, plain `.zip` files (mods, add-ons), `.tar`, `.tar.gz`, `.tgz` and `.gz` files
+/// are entered like folders.
 fn is_pak(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".pak") || lower.ends_with(".zip")
+    Kind::from_name(name).is_some()
 }
 
 fn split(vpath: &str) -> Result<Vec<&str>, SessionError> {
@@ -363,13 +366,14 @@ impl Session {
             limits: Limits::default(),
             paks: Mutex::new(HashMap::new()),
             loc_cache: Mutex::new(None),
+            video: Mutex::new(None),
             base_pak: std::sync::OnceLock::new(),
             texdbs: Mutex::new(HashMap::new()),
         };
         if let Some(name) = &session.only {
             if !is_pak(name) {
                 return Err(SessionError::WrongKind(format!(
-                    "{}: expected a folder, a .pak or a .zip file",
+                    "{}: expected a folder or an archive (.pak, .zip, .tar, .tar.gz, .tgz, .gz)",
                     path.display()
                 )));
             }
@@ -397,7 +401,11 @@ impl Session {
         if !map.contains_key(file) {
             let fh = File::open(file)
                 .map_err(|e| SessionError::Failed(format!("{}: {e}", file.display())))?;
-            let pak = PakArchive::open(BufReader::new(fh), self.limits)
+            let name = file
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let pak = Archive::open(BufReader::new(fh), &name, self.limits)
                 .map_err(|e| SessionError::Failed(format!("{}: {e}", file.display())))?;
             let tree = build_tree(pak.entries());
             map.insert(file.to_path_buf(), OpenPak { pak, tree });
@@ -1161,6 +1169,91 @@ impl Session {
             .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))
     }
 
+    /// Opens a video for the player and returns its size, subsampling, rate and frame count.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be read or is not a Theora video.
+    pub fn video_open(&self, vpath: &str) -> Result<adv_core::video::VideoMeta, SessionError> {
+        let data = self.read(vpath)?;
+        let stream = adv_core::video::VideoStream::open(&data, &self.limits)
+            .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))?;
+        let meta = stream.meta();
+        if let Ok(mut g) = self.video.lock() {
+            *g = Some((vpath.to_owned(), stream));
+        }
+        Ok(meta)
+    }
+
+    /// Decodes up to `count` frames (at most 64) starting at frame `start` of a video, as planar
+    /// YCbCr one frame after another. Fewer frames come back at the end of the video. Playing
+    /// forward is cheap; going back restarts the decoder from the first frame.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the video cannot be opened or a frame cannot be decoded.
+    pub fn video_frames(
+        &self,
+        vpath: &str,
+        start: u64,
+        count: usize,
+    ) -> Result<Vec<u8>, SessionError> {
+        let fail = |e: adv_core::Error| SessionError::Failed(format!("{vpath}: {e}"));
+        let cached = self
+            .video
+            .lock()
+            .map(|g| g.as_ref().is_some_and(|(p, _)| p == vpath))
+            .unwrap_or(false);
+        if !cached {
+            self.video_open(vpath)?;
+        }
+        let mut guard = self
+            .video
+            .lock()
+            .map_err(|_| SessionError::Failed("video state is unavailable".to_owned()))?;
+        let Some((_, stream)) = guard.as_mut() else {
+            return Err(SessionError::Failed(format!("{vpath}: video is not open")));
+        };
+        if start < stream.position() {
+            stream.rewind().map_err(fail)?;
+        }
+        while stream.position() < start {
+            if stream.next_frame().map_err(fail)?.is_none() {
+                return Ok(Vec::new());
+            }
+        }
+        let mut out = Vec::new();
+        for _ in 0..count.min(64) {
+            match stream.next_frame().map_err(fail)? {
+                Some(f) => out.extend_from_slice(&f.into_bytes()),
+                None => break,
+            }
+        }
+        Ok(out)
+    }
+
+    /// The soundtrack of a video as WAV (empty when the video has no sound).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be read or its sound is damaged.
+    pub fn video_audio(&self, vpath: &str) -> Result<Vec<u8>, SessionError> {
+        let data = self.read(vpath)?;
+        preview::video_audio_wav(&data, &self.limits)
+            .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))
+    }
+
+    /// Decodes stream `index` of a sound bank to MP3 (highest constant bitrate).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be read, the stream cannot be decoded or MP3 cannot carry it.
+    pub fn audio_mp3(&self, vpath: &str, index: usize) -> Result<Vec<u8>, SessionError> {
+        let data = self.read(vpath)?;
+        preview::audio_mp3(&data, index, &self.limits)
+            .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))
+    }
+
     /// Decodes stream `index` of a sound bank to WAV.
     ///
     /// # Errors
@@ -1779,6 +1872,66 @@ mod tests {
         assert!(Session::open(&bad).is_err());
         assert!(Session::open(&dir.path().join("loose.txt")).is_err());
         assert!(Session::open(&dir.path().join("missing")).is_err());
+    }
+
+    fn tar_file(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (name, data) in files {
+            let mut h = [0u8; 512];
+            h[..name.len()].copy_from_slice(name.as_bytes());
+            h[124..135].copy_from_slice(format!("{:011o}", data.len()).as_bytes());
+            h[156] = b'0';
+            h[257..262].copy_from_slice(b"ustar");
+            let sum: u32 = h
+                .iter()
+                .enumerate()
+                .map(|(i, &b)| {
+                    if (148..156).contains(&i) {
+                        32
+                    } else {
+                        u32::from(b)
+                    }
+                })
+                .sum();
+            h[148..155].copy_from_slice(format!("{sum:06o}\0").as_bytes());
+            out.extend_from_slice(&h);
+            out.extend_from_slice(data);
+            out.resize(out.len().div_ceil(512) * 512, 0);
+        }
+        out.extend_from_slice(&[0u8; 1024]);
+        out
+    }
+
+    #[test]
+    fn tar_tgz_and_gz_are_browsed_like_folders() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tmp");
+        let tar = tar_file(&[("sub/a.txt", b"hello"), ("b.txt", b"world")]);
+        std::fs::write(dir.path().join("m.tar"), &tar).expect("write");
+        let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        e.write_all(&tar).expect("gz");
+        std::fs::write(dir.path().join("m.tgz"), e.finish().expect("finish")).expect("write");
+        let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        e.write_all(b"plain").expect("gz");
+        std::fs::write(dir.path().join("note.txt.gz"), e.finish().expect("finish")).expect("write");
+        let s = Session::open(dir.path()).expect("open");
+        let root = s.list("").expect("root");
+        assert!(root.iter().all(|i| i.is_pak), "{root:?}");
+        for archive in ["m.tar", "m.tgz"] {
+            let names: Vec<_> = s
+                .list(archive)
+                .expect("list")
+                .into_iter()
+                .map(|i| i.name)
+                .collect();
+            assert_eq!(names, ["sub", "b.txt"], "{archive}");
+            assert_eq!(
+                s.read(&format!("{archive}/sub/a.txt")).expect("read"),
+                b"hello"
+            );
+        }
+        assert_eq!(s.read("note.txt.gz/note.txt").expect("read"), b"plain");
+        assert!(Session::open(&dir.path().join("m.tgz")).is_ok());
     }
 
     #[test]

@@ -13,4 +13,5 @@ step "cargo clippy";    cargo clippy --workspace --all-targets -- -D warnings
 step "cargo test";      cargo test --workspace
 step "check-repo";      node scripts/check-repo.mjs
 step "version check";   node scripts/version.mjs check
+step "components and licences list"; node scripts/third-party.mjs check
 printf '\nAll checks passed.\n'

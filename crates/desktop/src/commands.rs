@@ -97,6 +97,19 @@ impl From<&AudioStream> for StreamDto {
     }
 }
 
+/// What the video player needs to size and convert the frames of `video_frames`.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct VideoInfoDto {
+    pub width: u32,
+    pub height: u32,
+    pub chroma_shift_x: u32,
+    pub chroma_shift_y: u32,
+    pub fps: f64,
+    pub frames: u64,
+    /// Size of one frame in bytes (the three planes one after another).
+    pub frame_bytes: usize,
+}
+
 /// A preview for the UI. Picture and sound bytes come from separate binary commands.
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -136,6 +149,22 @@ pub enum PreviewDto {
     },
     /// A sound bank; fetch a stream with `get_audio`.
     Audio { streams: Vec<StreamDto> },
+    /// A `.bev` FMOD Designer project.
+    Bev {
+        version: u32,
+        project: String,
+        languages: Vec<String>,
+        chunks: Vec<(String, u32)>,
+        names: Vec<String>,
+        paths: Vec<String>,
+    },
+    /// An SVG picture, already sanitised by the core; `source` is the original text.
+    Svg {
+        svg: String,
+        source: String,
+        removed: usize,
+        removed_names: Vec<String>,
+    },
     /// A `.loc` localization file; read its items with `loc_page`.
     Loc { count: usize, keys: bool },
     /// Raw bytes.
@@ -146,6 +175,32 @@ impl From<Preview> for PreviewDto {
     fn from(p: Preview) -> Self {
         match p {
             Preview::Text { text, truncated } => Self::Text { text, truncated },
+            Preview::Bev {
+                version,
+                project,
+                languages,
+                chunks,
+                names,
+                paths,
+            } => Self::Bev {
+                version,
+                project,
+                languages,
+                chunks,
+                names,
+                paths,
+            },
+            Preview::Svg {
+                svg,
+                source,
+                removed,
+                removed_names,
+            } => Self::Svg {
+                svg,
+                source,
+                removed,
+                removed_names,
+            },
             Preview::Loc { count, keys } => Self::Loc { count, keys },
             Preview::Image {
                 width,
@@ -497,6 +552,44 @@ async fn get_audio(
     Ok(Response::new(wav))
 }
 
+/// Opens a video for the player.
+#[tauri::command]
+async fn video_open(state: State<'_, AppState>, path: String) -> Result<VideoInfoDto, AppError> {
+    let s = state.session()?;
+    let m = blocking(move || s.video_open(&path).map_err(AppError::from)).await?;
+    Ok(VideoInfoDto {
+        width: m.width,
+        height: m.height,
+        chroma_shift_x: m.chroma_shift_x,
+        chroma_shift_y: m.chroma_shift_y,
+        fps: f64::from(m.fps_num) / f64::from(m.fps_den.max(1)),
+        frames: m.frames,
+        frame_bytes: m.frame_bytes(),
+    })
+}
+
+/// The soundtrack of a video as WAV (empty when it has none).
+#[tauri::command]
+async fn video_audio(state: State<'_, AppState>, path: String) -> Result<Response, AppError> {
+    let s = state.session()?;
+    let wav = blocking(move || s.video_audio(&path).map_err(AppError::from)).await?;
+    Ok(Response::new(wav))
+}
+
+/// Up to `count` decoded frames of a video starting at `start`, as planar YCbCr.
+#[tauri::command]
+async fn video_frames(
+    state: State<'_, AppState>,
+    path: String,
+    start: u64,
+    count: usize,
+) -> Result<Response, AppError> {
+    let s = state.session()?;
+    let bytes =
+        blocking(move || s.video_frames(&path, start, count).map_err(AppError::from)).await?;
+    Ok(Response::new(bytes))
+}
+
 /// Writes a file or its converted form to a place the user chose in the save dialog.
 ///
 /// `format` is `raw` (the file as stored), `png` (a picture), `wav` (one sound stream, chosen
@@ -531,6 +624,7 @@ async fn save_as(
                 }
             },
             "wav" => s.audio_wav(&path, index.unwrap_or(0))?,
+            "mp3" => s.audio_mp3(&path, index.unwrap_or(0))?,
             "obj" => s.obj(&path)?.into_bytes(),
             "glb" => s.glb(&path)?,
             "txt" | "html" | "xml" => s.export_text(&path, &format)?,
@@ -565,6 +659,9 @@ pub fn run() {
             get_image,
             get_mesh,
             get_audio,
+            video_open,
+            video_frames,
+            video_audio,
             save_as,
             census,
             find_kind,

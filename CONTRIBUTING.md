@@ -32,6 +32,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 node scripts/check-repo.mjs
+node scripts/third-party.mjs check   # after changing a dependency: node scripts/third-party.mjs generate
 cargo deny check
 cd web && npm test && npm run typecheck
 ```

@@ -20,5 +20,6 @@ Step "cargo clippy" { cargo clippy --workspace --all-targets -- -D warnings }
 Step "cargo test" { cargo test --workspace }
 Step "check-repo" { node scripts/check-repo.mjs }
 Step "version check" { node scripts/version.mjs check }
+Step "components and licences list" { node scripts/third-party.mjs check }
 Write-Host ""
 Write-Host "Все проверки пройдены." -ForegroundColor Green

@@ -39,6 +39,32 @@ pub enum Preview {
         /// True when the file was longer than the part shown.
         truncated: bool,
     },
+    /// A `.bev` FMOD Designer project (see [`crate::bev`]).
+    Bev {
+        /// Format version.
+        version: u32,
+        /// Project name.
+        project: String,
+        /// Language names.
+        languages: Vec<String>,
+        /// Chunks of the project list with sizes.
+        chunks: Vec<(String, u32)>,
+        /// Plain names (sound banks, events, suffixes).
+        names: Vec<String>,
+        /// Paths of events and waves.
+        paths: Vec<String>,
+    },
+    /// An SVG picture that went through [`crate::svg::sanitize`]; only `svg` may be drawn.
+    Svg {
+        /// The sanitised document.
+        svg: String,
+        /// The original text (cut at [`MAX_TEXT_BYTES`]) for the "source" view.
+        source: String,
+        /// How many elements, attributes and values were removed.
+        removed: usize,
+        /// Names of the first removed things.
+        removed_names: Vec<String>,
+    },
     /// A `.loc` localization file; read its items page by page with the session.
     Loc {
         /// Number of items.
@@ -320,8 +346,35 @@ pub fn preview_sized(
 ) -> Preview {
     let head = &data[..data.len().min(64)];
     let lower = name.to_ascii_lowercase();
+    let svg = if lower.ends_with(".svg") {
+        crate::svg::sanitize(data).ok()
+    } else {
+        None
+    };
+    let bev = if lower.ends_with(".bev") {
+        crate::bev::parse(data, limits).ok()
+    } else {
+        None
+    };
     let attempt =
         match classify(name, head) {
+            _ if bev.is_some() => bev.map(|b| {
+                let (names, paths) = b.split_strings();
+                Preview::Bev {
+                    version: b.version,
+                    project: b.project,
+                    languages: b.languages,
+                    chunks: b.chunks,
+                    names,
+                    paths,
+                }
+            }),
+            FileKind::Text | FileKind::Other if svg.is_some() => svg.map(|c| Preview::Svg {
+                svg: c.svg,
+                source: decode_text(&data[..data.len().min(MAX_TEXT_BYTES)]),
+                removed: c.removed,
+                removed_names: c.removed_names,
+            }),
             FileKind::Text if lower.ends_with(".loc") => crate::loc::read_loc(data, limits)
                 .ok()
                 .map(|f| Preview::Loc {
@@ -591,6 +644,26 @@ pub fn audio_wav(data: &[u8], index: usize, limits: &Limits) -> Result<Vec<u8>> 
     Ok(bank.decode(&raw, index)?.to_wav())
 }
 
+/// The soundtrack of an `.ogv` as a WAV file; empty when the video has none.
+///
+/// # Errors
+///
+/// Fails when the file is not an Ogg video or its Vorbis stream is damaged.
+pub fn video_audio_wav(data: &[u8], limits: &Limits) -> Result<Vec<u8>> {
+    Ok(crate::video::ogg_audio(data, limits)?.map_or_else(Vec::new, |p| p.to_wav()))
+}
+
+/// Decodes stream `index` of a `.fsb` or `.bsb` to an MP3 file (320 kbps, see `mp3.rs`).
+///
+/// # Errors
+///
+/// Fails like [`audio_wav`], and for sample rates or channel counts MP3 cannot carry.
+pub fn audio_mp3(data: &[u8], index: usize, limits: &Limits) -> Result<Vec<u8>> {
+    let raw = unwrap_bank(Cursor::new(data), limits)?;
+    let bank = parse_bank(&raw, limits)?;
+    bank.decode(&raw, index)?.to_mp3()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,6 +675,68 @@ mod tests {
         v.extend(((blocks * 8) as i32).to_le_bytes());
         v.extend(std::iter::repeat_n(0u8, blocks * 8));
         v
+    }
+
+    #[test]
+    fn svg_is_sanitised_and_keeps_the_source() {
+        let src = br#"<svg><script>x()</script><rect width="2"/></svg>"#;
+        match preview("a.svg", src, None, Options::default(), &Limits::default()) {
+            Preview::Svg {
+                svg,
+                source,
+                removed,
+                removed_names,
+            } => {
+                assert!(!svg.contains("script"));
+                assert!(svg.contains("<rect width=\"2\"/>"));
+                assert!(source.contains("<script>"));
+                assert_eq!(removed, 1);
+                assert_eq!(removed_names, vec!["<script>".to_string()]);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn bev_container_is_previewed() {
+        let mut d = b"RIFF".to_vec();
+        d.extend_from_slice(&16u32.to_le_bytes());
+        d.extend_from_slice(b"FEV FMT ");
+        d.extend_from_slice(&4u32.to_le_bytes());
+        d.extend_from_slice(&0x0045_0000u32.to_le_bytes());
+        match preview("x.bev", &d, None, Options::default(), &Limits::default()) {
+            Preview::Bev {
+                version, project, ..
+            } => {
+                assert_eq!(version, 0x0045_0000);
+                assert!(project.is_empty());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn bev_is_listed_and_a_broken_one_is_not_a_bev() {
+        let p = preview(
+            "a.bev",
+            b"junk junk junk",
+            None,
+            Options::default(),
+            &Limits::default(),
+        );
+        assert!(!matches!(p, Preview::Bev { .. }), "{p:?}");
+    }
+
+    #[test]
+    fn broken_svg_is_shown_as_text() {
+        let p = preview(
+            "a.svg",
+            b"<svg><g></svg>",
+            None,
+            Options::default(),
+            &Limits::default(),
+        );
+        assert!(matches!(p, Preview::Text { .. }), "{p:?}");
     }
 
     #[test]

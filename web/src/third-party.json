@@ -1,0 +1,148 @@
+{
+  "components": [
+    {
+      "name": "@tauri-apps/api",
+      "version": "2.12.4",
+      "license": "Apache-2.0 OR MIT",
+      "url": "https://github.com/tauri-apps/tauri",
+      "kind": "npm",
+      "ru": "Связь интерфейса с ядром приложения",
+      "en": "Bridge between the interface and the app core"
+    },
+    {
+      "name": "@tauri-apps/plugin-dialog",
+      "version": "2.8.4",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/tauri-apps/plugins-workspace",
+      "kind": "npm",
+      "ru": "Вызов системных диалогов из интерфейса",
+      "en": "Calling native dialogs from the interface"
+    },
+    {
+      "name": "i18next",
+      "version": "27.1.1",
+      "license": "MIT",
+      "url": "https://github.com/i18next/i18next",
+      "kind": "npm",
+      "ru": "Переводы интерфейса ru/en",
+      "en": "ru/en interface translations"
+    },
+    {
+      "name": "three",
+      "version": "0.187.0",
+      "license": "MIT",
+      "url": "https://github.com/mrdoob/three.js",
+      "kind": "npm",
+      "ru": "3D-просмотр моделей",
+      "en": "3D model viewer"
+    },
+    {
+      "name": "clap",
+      "version": "4.6.7",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/clap-rs/clap",
+      "kind": "rust",
+      "ru": "Разбор аргументов командной строки (adv)",
+      "en": "Command-line argument parsing (adv)"
+    },
+    {
+      "name": "flate2",
+      "version": "1.1.11",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/rust-lang/flate2-rs",
+      "kind": "rust",
+      "ru": "Распаковка zlib/deflate: паки, .bsb, текстуры",
+      "en": "zlib/deflate decompression: packs, .bsb, textures"
+    },
+    {
+      "name": "lzma-rust2",
+      "version": "0.25.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/hasenbanck/lzma-rust2/",
+      "kind": "rust",
+      "ru": "Распаковка XZ/LZMA: .xz, .tar.xz, .7z",
+      "en": "XZ/LZMA decompression: .xz, .tar.xz, .7z"
+    },
+    {
+      "name": "rusty_mp3",
+      "version": "1.1.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Remade-With-Rust/remade_ffmpeg_rs",
+      "kind": "rust",
+      "ru": "Кодировщик MP3 для экспорта звука",
+      "en": "MP3 encoder for sound export"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/serde",
+      "kind": "rust",
+      "ru": "Сериализация данных между ядром и оболочкой",
+      "en": "Data serialisation between the core and the shell"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/json",
+      "kind": "rust",
+      "ru": "JSON в командной строке и обмене с оболочкой",
+      "en": "JSON for the command line and the app shell"
+    },
+    {
+      "name": "sevenz-rust2",
+      "version": "0.25.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/hasenbanck/sevenz-rust",
+      "kind": "rust",
+      "ru": "Чтение архивов .7z",
+      "en": "Reading .7z archives"
+    },
+    {
+      "name": "tauri",
+      "version": "2.12.5",
+      "license": "Apache-2.0 OR MIT",
+      "url": "https://github.com/tauri-apps/tauri",
+      "kind": "rust",
+      "ru": "Оболочка настольного приложения",
+      "en": "Desktop application shell"
+    },
+    {
+      "name": "tauri-plugin-dialog",
+      "version": "2.8.4",
+      "license": "Apache-2.0 OR MIT",
+      "url": "https://github.com/tauri-apps/plugins-workspace",
+      "kind": "rust",
+      "ru": "Системные диалоги выбора файлов и папок",
+      "en": "Native file and folder dialogs"
+    },
+    {
+      "name": "theora-rs",
+      "version": "0.1.0",
+      "license": "MPL-2.0",
+      "url": "https://github.com/xmoezzz/siglus_rs",
+      "kind": "rust",
+      "ru": "Декодер видео Theora (.ogv)",
+      "en": "Theora video decoder (.ogv)"
+    },
+    {
+      "name": "zip",
+      "version": "9.5.0",
+      "license": "MIT",
+      "url": "https://github.com/zip-rs/zip2",
+      "kind": "rust",
+      "ru": "Чтение .zip и .pak как архивов",
+      "en": "Reading .zip and .pak as archives"
+    },
+    {
+      "name": "libcelt 0.11.0 (Xiph.Org)",
+      "version": "2011-02-03",
+      "license": "BSD-3-Clause",
+      "kind": "code",
+      "url": "https://gitlab.xiph.org/xiph/opus/-/tree/d922fe1c",
+      "ru": "Декодер CELT (звук FSB5, режим 12): порт на Rust, crates/core/src/celt",
+      "en": "CELT decoder (FSB5 sound, mode 12): Rust port, crates/core/src/celt"
+    }
+  ]
+}

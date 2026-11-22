@@ -1,0 +1,17 @@
+{
+  "rust:lzma-rust2": { "ru": "Распаковка XZ/LZMA: .xz, .tar.xz, .7z", "en": "XZ/LZMA decompression: .xz, .tar.xz, .7z" },
+  "rust:sevenz-rust2": { "ru": "Чтение архивов .7z", "en": "Reading .7z archives" },
+  "rust:flate2": { "ru": "Распаковка zlib/deflate: паки, .bsb, текстуры", "en": "zlib/deflate decompression: packs, .bsb, textures" },
+  "rust:zip": { "ru": "Чтение .zip и .pak как архивов", "en": "Reading .zip and .pak as archives" },
+  "rust:rusty_mp3": { "ru": "Кодировщик MP3 для экспорта звука", "en": "MP3 encoder for sound export" },
+  "rust:theora-rs": { "ru": "Декодер видео Theora (.ogv)", "en": "Theora video decoder (.ogv)" },
+  "rust:clap": { "ru": "Разбор аргументов командной строки (adv)", "en": "Command-line argument parsing (adv)" },
+  "rust:serde_json": { "ru": "JSON в командной строке и обмене с оболочкой", "en": "JSON for the command line and the app shell" },
+  "rust:serde": { "ru": "Сериализация данных между ядром и оболочкой", "en": "Data serialisation between the core and the shell" },
+  "rust:tauri": { "ru": "Оболочка настольного приложения", "en": "Desktop application shell" },
+  "rust:tauri-plugin-dialog": { "ru": "Системные диалоги выбора файлов и папок", "en": "Native file and folder dialogs" },
+  "npm:three": { "ru": "3D-просмотр моделей", "en": "3D model viewer" },
+  "npm:i18next": { "ru": "Переводы интерфейса ru/en", "en": "ru/en interface translations" },
+  "npm:@tauri-apps/plugin-dialog": { "ru": "Вызов системных диалогов из интерфейса", "en": "Calling native dialogs from the interface" },
+  "npm:@tauri-apps/api": { "ru": "Связь интерфейса с ядром приложения", "en": "Bridge between the interface and the app core" }
+}

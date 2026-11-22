@@ -58,11 +58,11 @@ export class ModelViewer {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    this.resize();
     this.resetView();
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(this.host);
-    this.resize();
     const tick = () => {
       this.frame = requestAnimationFrame(tick);
       this.controls.update();
@@ -71,11 +71,17 @@ export class ModelViewer {
     tick();
   }
 
-  /** Puts the camera in front of the model, looking at its centre. */
+  /**
+   * Puts the camera in front of the model, looking at its centre, far enough that the whole
+   * bounding sphere fits both the vertical and the horizontal field of view.
+   */
   resetView(): void {
+    const vertical = (this.camera.fov * Math.PI) / 180 / 2;
+    const horizontal = Math.atan(Math.tan(vertical) * this.camera.aspect);
+    const distance = (this.radius / Math.sin(Math.min(vertical, horizontal))) * 1.1;
     this.camera.near = this.radius / 100;
-    this.camera.far = this.radius * 100;
-    this.camera.position.set(0, this.radius * 0.6, this.radius * 2.6);
+    this.camera.far = this.radius * 100 + distance;
+    this.camera.position.set(0, distance * 0.25, distance * 0.97);
     this.camera.updateProjectionMatrix();
     this.controls.target.set(0, 0, 0);
     this.controls.update();
