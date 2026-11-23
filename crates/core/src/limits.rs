@@ -24,6 +24,8 @@ pub struct Limits {
     pub max_ratio: u64,
     /// Entries up to this size are exempt from the ratio check.
     pub ratio_floor: u64,
+    /// Maximum number of pointer-fix entries in one pack database (8 bytes each).
+    pub max_fixes: u64,
 }
 
 impl Default for Limits {
@@ -35,6 +37,8 @@ impl Default for Limits {
             max_inflated_size: GIB,
             max_ratio: 2000,
             ratio_floor: MIB,
+            // The 7.0 pack fix block holds 6 527 459 entries; this leaves room for growth.
+            max_fixes: 16_000_000,
         }
     }
 }
@@ -49,5 +53,6 @@ mod tests {
         // The largest inflated .loc seen so far is 71 577 688 bytes.
         assert!(limits.max_inflated_size > 71_577_688);
         assert!(limits.max_path_len >= 255);
+        assert!(limits.max_fixes >= 6_527_459);
     }
 }

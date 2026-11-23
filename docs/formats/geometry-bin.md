@@ -157,3 +157,6 @@ sizes ..." tail seen in AirElemental). The vertex declaration (stride, component
 offsets), the sub-meshes (model elements with vertex and index ranges per LOD) and the
 material to texture binding are **not in the `.bin`**; they are in the database record. See
 [../TOOLS-STUDY.md](../TOOLS-STUDY.md).
+
+## Declared stride (2026-11-23)
+`geometry::declared_stride(xdb)` reads the `<stride>` of the first `<vertexDeclarations>` block of a Geometry `.xdb` descriptor (accepted range 16 to 256 bytes). It is a helper with three tests; the CLI does not yet pass a descriptor, so `--stride` remains the way to set it. Status: draft; the object-image decode is NOT done.
