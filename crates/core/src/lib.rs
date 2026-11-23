@@ -16,6 +16,7 @@ pub mod db;
 pub mod db32;
 pub mod error;
 pub mod extract;
+pub mod fixes;
 pub mod fsb;
 pub mod fsb4;
 pub mod gamever;

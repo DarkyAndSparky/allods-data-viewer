@@ -17,6 +17,7 @@ Notes in this folder describe formats in our own words, see
 | Resource databases `.bin` | draft | [bin-db.md](bin-db.md) |
 | Audio `.fsb` / `.bsb` (FSB5, Vorbis), video `.ogv` (Theora) | partly verified | [media.md](media.md) |
 | Model geometry `.(Geometry).bin` | draft (vertices and triangles located) | [geometry-bin.md](geometry-bin.md) |
+| Pack pointer fixes (7.0 Bits32 `Bin/pack.bin`, block 4) | verified layout; tags 0/1/6/7 not decoded | [pack-fixes.md](pack-fixes.md) |
 | Collision mesh data (layout only) | draft (in-memory layout from debug symbols; file unknown) | [collision-mesh.md](collision-mesh.md) |
 | Skeletal animation `.(SkeletalAnimation).bin` | draft (header read by the app; tracks decoded by the core with strict checks; pose semantics open) | [skeletal-animation.md](skeletal-animation.md) |
 | Client map chunks (`terrainDump`, splat maps, lightmaps) | draft (files and container seen; contents unknown) | [map-chunk.md](map-chunk.md) |

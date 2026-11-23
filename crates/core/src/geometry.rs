@@ -107,6 +107,21 @@ pub fn guess_stride(vertices: &[u8], indices: &[u16]) -> Result<usize> {
         .ok_or_else(|| Error::format("cannot determine the vertex size"))
 }
 
+/// Reads the vertex stride from the first `<vertexDeclarations>` block of a Geometry `.xdb` descriptor.
+///
+/// The declaration stores the stride explicitly, so it is preferred over [`guess_stride`]. Returns
+/// `None` when the block or a plausible `<stride>` value (16 to 256 bytes) is missing.
+#[must_use]
+pub fn declared_stride(xdb: &str) -> Option<usize> {
+    let block = xdb.split_once("<vertexDeclarations>")?.1;
+    let block = block
+        .split_once("</vertexDeclarations>")
+        .map_or(block, |b| b.0);
+    let value = block.split_once("<stride>")?.1.split_once("</stride>")?.0;
+    let stride: usize = value.trim().parse().ok()?;
+    (16..=256).contains(&stride).then_some(stride)
+}
+
 /// Parses an inflated geometry file.
 ///
 /// # Errors
@@ -589,6 +604,26 @@ fn animation_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_stride_is_read_from_the_declaration() {
+        let xdb = "<root><vertexDeclarations><Item><stride>36</stride></Item></vertexDeclarations></root>";
+        assert_eq!(declared_stride(xdb), Some(36));
+    }
+
+    #[test]
+    fn declared_stride_rejects_truncated_descriptors() {
+        assert_eq!(declared_stride("<vertexDeclarations><stride>36"), None);
+        assert_eq!(declared_stride("<root><stride>36</stride></root>"), None);
+    }
+
+    #[test]
+    fn declared_stride_rejects_corrupted_values() {
+        let bad = "<vertexDeclarations><stride>{}</stride></vertexDeclarations>";
+        assert_eq!(declared_stride(&bad.replace("{}", "abc")), None);
+        assert_eq!(declared_stride(&bad.replace("{}", "4")), None);
+        assert_eq!(declared_stride(&bad.replace("{}", "99999")), None);
+    }
 
     #[test]
     fn stride_with_finite_positions_wins_over_a_smaller_one() {
