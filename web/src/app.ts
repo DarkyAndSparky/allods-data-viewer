@@ -60,6 +60,12 @@ export class App {
   private tree = h("div", { class: "tree", attrs: { role: "tree" } });
   private results = h("div", { class: "results", attrs: { hidden: "" } });
   private searchTimer = 0;
+  /** Bumped by every `open()` and `clearOpened()`: answers that belong to an older root are dropped. */
+  private sessionGen = 0;
+  /** Bumped by every search; only the newest search may touch the result list. */
+  private searchSeq = 0;
+  /** Bumped by every preview and by leaving it; only the newest `select()` may draw. */
+  private previewSeq = 0;
   private show: Show = "all";
   private sort: SortBy = "name";
   private query = "";
@@ -120,6 +126,9 @@ export class App {
   /** Forgets the opened folder or file and returns to the empty screen. */
   private clearOpened(): void {
     window.clearTimeout(this.searchTimer);
+    this.sessionGen++;
+    this.searchSeq++;
+    this.previewSeq++;
     this.stopAudio();
     this.closeViewer();
     this.rootLabel = "";
@@ -158,6 +167,7 @@ export class App {
 
   /** Clears the selected file: no highlight, no preview, back to the hint. */
   private deselect(): void {
+    this.previewSeq++;
     this.stopAudio();
     this.closeViewer();
     this.selected = "";
@@ -169,17 +179,35 @@ export class App {
   async open(path: string): Promise<void> {
     if (!this.api || path.trim() === "") return;
     this.clearError();
+    const gen = ++this.sessionGen;
+    // Everything that belongs to the previous root stops here, before the new one is read.
+    window.clearTimeout(this.searchTimer);
+    this.searchSeq++;
+    this.previewSeq++;
+    this.stopAudio();
+    this.closeViewer();
+    this.dockAudio.pause();
+    this.dock.setAttribute("hidden", "");
+    this.revoke();
+    this.folderView = null;
+    this.census = null;
+    this.gameVer = null;
+    this.kindView = null;
+    this.kinds.clear();
     try {
-      this.rootLabel = await this.api.openPath(path.trim());
+      const label = await this.api.openPath(path.trim());
+      if (gen !== this.sessionGen) return;
+      this.rootLabel = label;
       save("path", path.trim());
       this.selected = "";
       this.scope = "";
       this.updateScope();
       this.showHint("selectFile");
       await this.loadRoot();
+      if (gen !== this.sessionGen) return;
       void this.loadCensus();
     } catch (e) {
-      this.showError(toAppError(e));
+      if (gen === this.sessionGen) this.showError(toAppError(e));
     }
   }
 
@@ -717,20 +745,26 @@ export class App {
 
   private async loadCensus(): Promise<void> {
     if (!this.api) return;
+    const gen = this.sessionGen;
     this.census = null;
     this.gameVer = null;
     this.kindView = null;
     this.renderStats();
     try {
-      this.gameVer = await this.api.gameVersion();
+      const v = await this.api.gameVersion();
+      if (gen !== this.sessionGen) return;
+      this.gameVer = v;
     } catch {
+      if (gen !== this.sessionGen) return;
       this.gameVer = null;
     }
     this.renderStats();
     try {
       const c = await this.api.census();
+      if (gen !== this.sessionGen) return;
       this.census = c;
     } catch {
+      if (gen !== this.sessionGen) return;
       this.census = null;
     }
     this.renderStats();
@@ -801,6 +835,7 @@ export class App {
   private async runSearch(query: string): Promise<void> {
     if (!this.api) return;
     const q = query.trim();
+    const seq = ++this.searchSeq;
     this.query = q;
     if (q !== "" && this.kindView !== null) {
       this.kindView = null;
@@ -814,11 +849,12 @@ export class App {
     this.results.replaceChildren(h("p", { class: "muted", text: this.tr("loading") }));
     try {
       let hits = await this.api.search(q, this.searchScope());
+      if (seq !== this.searchSeq) return;
       if (this.hideJunk) hits = hits.filter((p) => !isJunkPath(p));
       if (this.results.hidden) return;
       if (this.show !== "all" || this.sort === "kind") {
         await this.learnKinds(hits.filter((p) => !this.kinds.has(p)));
-        if (this.results.hidden) return;
+        if (seq !== this.searchSeq || this.results.hidden) return;
       }
       if (this.show !== "all") hits = hits.filter((p) => this.kinds.get(p) === this.show);
       if (this.sort === "kind") {
@@ -829,6 +865,7 @@ export class App {
       this.showHits(hits, SEARCH_LIMIT, "resultsLimit");
       if (this.inTexts) await this.showTextHits(q);
     } catch (e) {
+      if (seq !== this.searchSeq) return;
       this.results.replaceChildren();
       this.showError(toAppError(e));
     }
@@ -1079,6 +1116,7 @@ export class App {
     }
     this.folderView = path;
     this.selected = "";
+    this.previewSeq++;
     this.clearError();
     this.stopAudio();
     this.closeViewer();
@@ -1142,6 +1180,7 @@ export class App {
     if (!this.api) return;
     this.folderView = null;
     this.selected = path;
+    const seq = ++this.previewSeq;
     this.clearError();
     this.stopAudio();
     this.closeViewer();
@@ -1149,7 +1188,7 @@ export class App {
     this.view.replaceChildren(h("p", { class: "muted", text: this.tr("loading") }));
     try {
       const p = await this.api.preview(path, textureIndex);
-      if (this.selected !== path) return;
+      if (seq !== this.previewSeq) return;
       const actions = h("div", { class: "toolbar" }, this.saveButton("saveRaw", "filterAll", "*", "raw", path));
       if (p.kind === "image") {
         actions.append(this.saveButton("savePng", "filterPng", "png", "png", path, { textureIndex: p.index }));
@@ -1168,14 +1207,16 @@ export class App {
         );
       }
       actions.classList.add("actions");
+      const body = await this.body(path, p, focusId);
+      if (seq !== this.previewSeq) return;
       this.view.replaceChildren(
         this.crumbs(path, false),
         h("h2", { class: "file-title", text: baseName(path) }),
-        await this.body(path, p, focusId),
+        body,
         actions,
       );
     } catch (e) {
-      if (this.selected === path) {
+      if (seq === this.previewSeq) {
         this.view.replaceChildren();
         this.showError(toAppError(e));
       }

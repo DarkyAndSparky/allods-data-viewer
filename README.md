@@ -5,7 +5,7 @@
 Open source viewer, extractor and converter for the resources of the Allods Online game client:
 archives, localization, textures, audio, video and models.
 
-> Status: **M0**, project skeleton. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: version 0.1.74, early development. Milestones M0 to M2 and M5 (desktop app) are done; audio, video, resource databases, models, the 3D viewer and animations are partial; materials, packing and map viewing are not started. Several format decoders (model geometry, skeletal animation, maps, materials) are `draft`: what each format reads and how far it is verified is listed in [docs/formats/README.md](docs/formats/README.md). Plan and per-milestone status: [docs/ROADMAP.md](docs/ROADMAP.md).
 > Русская версия: [README.ru.md](README.ru.md).
 
 ## Goals
