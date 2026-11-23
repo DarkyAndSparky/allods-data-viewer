@@ -23,6 +23,7 @@ pub mod gamever;
 pub mod geometry;
 pub mod limits;
 pub mod loc;
+pub mod material;
 pub mod mp3;
 pub mod ogv;
 pub mod packsinfo;
