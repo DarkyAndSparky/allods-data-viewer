@@ -434,24 +434,23 @@ impl Quant<'_, '_, '_> {
             let qalloc = self.dec.tell_frac() - tell;
             b -= qalloc;
             let orig_fill = fill;
-            let delta0;
             let imid;
             let iside;
-            if itheta == 0 {
+            let delta0 = if itheta == 0 {
                 imid = 32767;
                 iside = 0;
                 fill &= (1u32 << bb) - 1;
-                delta0 = -16384;
+                -16384
             } else if itheta == 16384 {
                 imid = 0;
                 iside = 32767;
                 fill &= ((1u32 << bb) - 1) << bb;
-                delta0 = 16384;
+                16384
             } else {
                 imid = bitexact_cos(itheta);
                 iside = bitexact_cos(16384 - itheta);
-                delta0 = frac_mul16((n as i32 - 1) << 7, bitexact_log2tan(iside, imid));
-            }
+                frac_mul16((n as i32 - 1) << 7, bitexact_log2tan(iside, imid))
+            };
             mid = (1.0 / 32768.0) * imid as f32;
             let side = (1.0 / 32768.0) * iside as f32;
             let mut delta = delta0;

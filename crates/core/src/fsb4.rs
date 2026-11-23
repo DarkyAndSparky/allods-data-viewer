@@ -206,9 +206,11 @@ fn decode_pcm(data: &[u8], channels: usize, frames: u64, mode: u32) -> Vec<i16> 
     let total = available.min(usize::try_from(frames).unwrap_or(usize::MAX));
     let count = total.saturating_mul(channels);
     if wide {
-        data.chunks_exact(2)
+        data.as_chunks::<2>()
+            .0
+            .iter()
             .take(count)
-            .map(|b| i16::from_le_bytes([b[0], b[1]]))
+            .map(|b| i16::from_le_bytes(*b))
             .collect()
     } else {
         data.iter()

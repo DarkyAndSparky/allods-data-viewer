@@ -415,7 +415,27 @@ impl Geometry {
         if n == 0 || n > 255 || skin.len() != vertex_count || !skeleton.is_forest() {
             return None;
         }
-        let local = skeleton.local_pose();
+        // A bone matrix may carry a uniform scale `a` (18.0 models: 1.2); a node keeps the ratio
+        // of its scale to its parent's, the rotation is normalised.
+        let world = skeleton.world_pose();
+        let scale_of = |m: &[f32; 9]| (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
+        let a: Vec<f32> = world.iter().map(|(m, _)| scale_of(m)).collect();
+        let mut local = skeleton.local_pose();
+        let mut node_scale = vec![1.0f32; n];
+        for (i, b) in skeleton.bones.iter().enumerate() {
+            let ap = b.parent.map_or(1.0, |p| a[p]);
+            if a[i] < 1e-6 || ap < 1e-6 {
+                return None;
+            }
+            let (r, t) = &mut local[i];
+            for x in r.iter_mut() {
+                *x /= a[i] * ap;
+            }
+            for x in t.iter_mut() {
+                *x /= ap * ap;
+            }
+            node_scale[i] = a[i] / ap;
+        }
         // Only proper rotations can become quaternions.
         let proper = |m: &[f32; 9]| {
             let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
@@ -485,8 +505,14 @@ impl Geometry {
             } else {
                 format!(r#","children":[{}]"#, children.join(","))
             };
+            let sc = node_scale[i];
+            let scale = if (sc - 1.0).abs() > 1e-4 {
+                format!(r#","scale":[{sc},{sc},{sc}]"#)
+            } else {
+                String::new()
+            };
             nodes.push(format!(
-                r#"{{"name":"{name}","translation":[{},{},{}],"rotation":[{},{},{},{}]{kids}}}"#,
+                r#"{{"name":"{name}","translation":[{},{},{}],"rotation":[{},{},{},{}]{scale}{kids}}}"#,
                 t[0], t[1], t[2], q[0], q[1], q[2], q[3]
             ));
         }

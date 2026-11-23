@@ -1157,6 +1157,49 @@ impl Session {
             .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))
     }
 
+    /// The model as a binary glTF file with one animation clip (`clip` is the virtual path of an
+    /// `X.<Clip>.(SkeletalAnimation).bin`).
+    ///
+    /// # Errors
+    ///
+    /// Fails when a file cannot be read, is not consistent, or the clip does not fit the model.
+    pub fn glb_animated(&self, vpath: &str, clip: &str) -> Result<Vec<u8>, SessionError> {
+        let data = self.read(vpath)?;
+        let clip_data = self.read(clip)?;
+        let name = clip.rsplit('/').next().unwrap_or(clip);
+        preview::mesh_glb_animated(&data, &clip_data, name, &self.limits)
+            .map_err(|e| SessionError::Failed(format!("{clip}: {e}")))
+    }
+
+    /// Animation clips that belong to a model: `.(SkeletalAnimation).bin` files in its folder and
+    /// in an `Animations` folder next to it, as full virtual paths in name order.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the path of the model is invalid.
+    pub fn clips_of(&self, vpath: &str) -> Result<Vec<String>, SessionError> {
+        let dir = vpath.rsplit_once('/').map_or("", |(d, _)| d);
+        let join = |d: &str, n: &str| {
+            if d.is_empty() {
+                n.to_owned()
+            } else {
+                format!("{d}/{n}")
+            }
+        };
+        let mut out = Vec::new();
+        for d in [dir.to_owned(), join(dir, "Animations")] {
+            if let Ok(items) = self.list(&d) {
+                for it in items {
+                    if !it.is_dir && it.kind == FileKind::Animation {
+                        out.push(join(&d, &it.name));
+                    }
+                }
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
     /// The model as Wavefront OBJ text.
     ///
     /// # Errors
@@ -1900,6 +1943,32 @@ mod tests {
         }
         out.extend_from_slice(&[0u8; 1024]);
         out
+    }
+
+    #[test]
+    fn clips_of_finds_the_clips_next_to_a_model() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let m = dir.path().join("Hero");
+        std::fs::create_dir_all(m.join("Animations")).expect("dirs");
+        std::fs::write(m.join("Hero.(Geometry).bin"), b"x").expect("write");
+        std::fs::write(m.join("Hero.Walk.(SkeletalAnimation).bin"), b"x").expect("write");
+        std::fs::write(m.join("Animations/Hero.Idle.(SkeletalAnimation).bin"), b"x")
+            .expect("write");
+        std::fs::write(m.join("Animations/notes.txt"), b"x").expect("write");
+        let s = Session::open(dir.path()).expect("open");
+        let clips = s.clips_of("Hero/Hero.(Geometry).bin").expect("clips");
+        assert_eq!(
+            clips,
+            [
+                "Hero/Animations/Hero.Idle.(SkeletalAnimation).bin",
+                "Hero/Hero.Walk.(SkeletalAnimation).bin"
+            ]
+        );
+        assert!(
+            s.glb_animated("Hero/Hero.(Geometry).bin", &clips[0])
+                .is_err()
+        );
+        assert!(s.clips_of("Missing/x.bin").expect("none").is_empty());
     }
 
     #[test]

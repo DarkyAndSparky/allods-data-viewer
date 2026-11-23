@@ -444,6 +444,56 @@ export class App {
     }
   }
 
+  /** Adds the clip list and the play button to the model toolbar when the model has clips. */
+  private async clipPicker(path: string, viewer: ModelViewer, bar: HTMLElement): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    let clips: string[] = [];
+    try {
+      clips = await api.clips(path);
+    } catch (e) {
+      console.error(e);
+    }
+    if (clips.length === 0 || this.viewer !== viewer) return;
+    const select = h("select", { attrs: { "aria-label": this.tr("animClip") } });
+    select.append(h("option", { text: this.tr("animNone"), attrs: { value: "" } }));
+    for (const c of clips) {
+      const name = (c.split("/").pop() ?? c).replace(/\.\(SkeletalAnimation\)\.bin$/i, "");
+      select.append(h("option", { text: name, attrs: { value: c } }));
+    }
+    const play = h("button", { class: "btn", text: this.tr("animPause"), attrs: { type: "button", disabled: "" } });
+    const status = h("span", { class: "muted" });
+    const loop = h("input", { attrs: { type: "checkbox", id: "animLoop", checked: "" } });
+    loop.addEventListener("change", () => viewer.setLoop(loop.checked));
+    let paused = false;
+    select.addEventListener("change", async () => {
+      paused = false;
+      play.textContent = this.tr("animPause");
+      status.textContent = "";
+      if (select.value === "") {
+        viewer.stopAnimation();
+        play.setAttribute("disabled", "");
+        return;
+      }
+      status.textContent = this.tr("animLoading");
+      try {
+        await viewer.playGlb(await api.animatedGlb(path, select.value));
+        play.removeAttribute("disabled");
+        status.textContent = "";
+      } catch (e) {
+        viewer.stopAnimation();
+        play.setAttribute("disabled", "");
+        status.textContent = tf(this.lang, "animFailed", { error: String(e) });
+      }
+    });
+    play.addEventListener("click", () => {
+      paused = !paused;
+      viewer.setPaused(paused);
+      play.textContent = this.tr(paused ? "animPlay" : "animPause");
+    });
+    bar.append(h("label", {}, this.tr("animClip") + ": ", select), play, h("label", {}, loop, this.tr("animLoop")), status);
+  }
+
   /** Draggable divider between the file list and the viewer; a click folds the list away. */
   private makeSplitter(): HTMLElement {
     const MIN = 224;
@@ -1323,6 +1373,7 @@ export class App {
           wire.addEventListener("change", () => viewer.setWireframe(wire.checked));
           zup.addEventListener("change", () => viewer.setZUp(zup.checked));
           reset.addEventListener("click", () => viewer.resetView());
+          void this.clipPicker(path, viewer, bar);
         } catch (e) {
           stage.replaceChildren(h("p", { class: "muted", text: this.tr("webglMissing") }));
           console.error(e);

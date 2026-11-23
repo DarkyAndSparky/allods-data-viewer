@@ -5,6 +5,27 @@ Rule: every new build adds its section here before the archive is made (see [VER
 
 Entries for 0.1.14 to 0.1.44 were rebuilt from the delivery messages of the project chat (2026-11-19); where a message gave no detail the entry says so.
 
+## 0.1.74
+
+### Added
+- Model view: a list of animation clips of the model (files `.(SkeletalAnimation).bin` in its folder and in an `Animations` folder next to it), a pause/play button and a "Loop" checkbox (on by default). The model is shown skinned and plays the chosen clip; "No animation" returns the static mesh. Texts in ru and en.
+- `Session::clips_of`, `Session::glb_animated`, `adv_core::preview::mesh_glb_animated`; app commands `get_clips`, `get_animated_glb`.
+- Tests: world pose of a scaled bone matrix, a clip that is not a clip, clips next to a model.
+
+### Changed
+- Merged GitHub `main` (pull requests 3, 4, 5, 6): `fixes.rs`, `material.rs`, `declared_stride`, formats notes `pack-bin-object-image.md`, `pack-fixes.md`, `common-material.md`, `INSTALL.md`; vite 8.3.8, zip 9.7.3.
+- `crates/desktop/icons/icon.icns` recompressed without loss (2 070 377 to 1 946 628 bytes) to fit the repository size limit.
+- Added `CONTRIBUTORS.md` and a Contributors section in both READMEs.
+- `docs/formats/geometry-bin.md` regrouped: scaled bones next to the bind pose, the database record notes under one heading with links to the new format notes.
+
+### Fixed
+- Models of client 18.0 (bone matrices with a uniform scale 1.2): the skeleton pose is inverted with the scale and the `.glb` nodes carry the scale ratio, so clips of `Mirianna` are accepted. Models of 7.0 give the same pose (the numbers in the `.glb` differ in the seventh digit).
+
+### Known
+- Checked: `.glb` of ArchdemonMage (7.0) and Mirianna (18.0) with clips load and play in a headless Chromium (the mesh stays whole and the time runs); not checked in the app (`adv-desktop` is not built here) and no side-by-side look at the motion against the game.
+- Bone `Twist_L` of Mirianna has a different scale (0.815) and its rest translation differs from the clip.
+- Bones with a non-uniform scale are not handled.
+
 ## 0.1.73
 
 ### Added

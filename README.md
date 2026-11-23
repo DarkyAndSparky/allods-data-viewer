@@ -309,6 +309,10 @@ npm test
 npm run build
 ```
 
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md). Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Legal
 
 Allods Data Viewer is an independent project. It is not affiliated with the game's developers

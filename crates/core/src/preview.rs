@@ -601,6 +601,20 @@ pub fn mesh_glb(data: &[u8], limits: &Limits) -> Result<Vec<u8>> {
     load_geometry(data, limits)?.to_glb()
 }
 
+/// A binary glTF file of a geometry `.bin` with one skeletal animation clip (`clip` is the content
+/// of an `X.<Clip>.(SkeletalAnimation).bin`, zlib compressed or inflated).
+///
+/// # Errors
+///
+/// Fails when the model or the clip is not consistent, or the clip does not animate the model's
+/// bones.
+pub fn mesh_glb_animated(data: &[u8], clip: &[u8], name: &str, limits: &Limits) -> Result<Vec<u8>> {
+    let g = load_geometry(data, limits)?;
+    let inflated = crate::geometry::inflate(clip, limits)?;
+    let clip = crate::animation::decode(&inflated)?;
+    g.to_glb_animated(&clip, name)
+}
+
 /// Wavefront OBJ text of a geometry `.bin` (positions, UVs, triangles).
 ///
 /// # Errors
@@ -945,6 +959,13 @@ mod tests {
             &l,
         );
         assert!(matches!(tex, Preview::Image { .. }));
+    }
+
+    #[test]
+    fn animated_glb_rejects_a_clip_that_is_not_a_clip() {
+        let d = tiny_geometry(32);
+        let r = mesh_glb_animated(&d, b"not a clip", "x", &Limits::default());
+        assert!(r.is_err());
     }
 
     #[test]

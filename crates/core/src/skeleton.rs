@@ -123,12 +123,16 @@ impl Skeleton {
             .map(|b| {
                 let m = &b.matrix;
                 let p = &b.position;
+                // Some models (18.0) store matrices with a uniform scale `s` (rows of length `s`):
+                // the inverse of `[m^T | p]` is then `[m / s^2 | -m p / s^2]`.
+                let n2 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
+                let k = if n2 > 1e-12 { 1.0 / n2 } else { 1.0 };
                 let w = [
-                    -(m[0] * p[0] + m[1] * p[1] + m[2] * p[2]),
-                    -(m[3] * p[0] + m[4] * p[1] + m[5] * p[2]),
-                    -(m[6] * p[0] + m[7] * p[1] + m[8] * p[2]),
+                    -(m[0] * p[0] + m[1] * p[1] + m[2] * p[2]) * k,
+                    -(m[3] * p[0] + m[4] * p[1] + m[5] * p[2]) * k,
+                    -(m[6] * p[0] + m[7] * p[1] + m[8] * p[2]) * k,
                 ];
-                (*m, w)
+                (m.map(|x| x * k), w)
             })
             .collect()
     }
@@ -188,6 +192,25 @@ impl Skeleton {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn a_scaled_matrix_is_inverted_with_its_scale() {
+        let m = 0.5;
+        let sk = Skeleton {
+            bones: vec![Bone {
+                name: "Root".into(),
+                parent: None,
+                matrix: [m, 0.0, 0.0, 0.0, m, 0.0, 0.0, 0.0, m],
+                position: [1.0, 2.0, 3.0],
+            }],
+        };
+        let (r, w) = sk.world_pose()[0];
+        assert!((r[0] - 2.0).abs() < 1e-6 && (r[4] - 2.0).abs() < 1e-6 && r[1] == 0.0);
+        assert!(
+            (w[0] + 2.0).abs() < 1e-6 && (w[2] + 6.0).abs() < 1e-6,
+            "{w:?}"
+        );
+    }
 
     /// A tail with three bones: `Root`, `Arm` (child of 0) and `Hand` (child of 1).
     pub(crate) fn sample() -> Vec<u8> {

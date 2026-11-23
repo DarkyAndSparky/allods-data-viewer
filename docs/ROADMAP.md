@@ -17,7 +17,7 @@ Goal: one tool to browse, extract, convert and (into new archives) pack all data
 | M8 | Materials | find how a model refers to its textures, export glTF with textures | not started; record layouts are known from PDBs and the XML database, binding to real data is next |
 | M9 | 3D viewer | Three.js preview of models **with textures applied** | partial: viewer works without textures |
 | M10 | Pack | write a **new** `.pak` from a folder (zlib layer, CRC32), never touching originals | not started (no `adv pack` yet); detailed in [SPEC](SPEC-audit-and-modding.md) block C |
-| M11 | Skeletons and animations | decode clips, export glTF animation, play in the viewer | partial: decoder and glTF export done; player open |
+| M11 | Skeletons and animations | decode clips, export glTF animation, play in the viewer | partial: decoder, glTF export and the player (clip list, pause, loop; 0.1.74) done; checked only headless |
 | M12 | Maps and locations viewer | open map tiles and locations, render chunks top-down, assemble a global map with zoom and pan | not started; `Maps_*.bin` turned out to be resource databases of the same family as `pack.bin` (names, texture sizes readable, terrain objects not) |
 | M13 | Scene render export | export the current view (a map area or a model scene) as PNG, and as SVG where the scene can be vector (for the Atlas of Allods) | not started |
 
@@ -106,3 +106,5 @@ Note: replacing files inside a game client can break the game updater or its ter
 - [x] Archives `.7z`, `.xz`, `.tar.xz` (0.1.73); `.tar.bz2` and `.rar` have no suitable crate.
 - [x] `.bev` (FEV project) viewer: names, event paths, languages (`crates/core/src/bev.rs`); event data `LGCY` not decoded. FSB4 codecs beyond IMA/PCM wait for samples.
 - [ ] Streams of some banks show 8000 Hz / 0:00 / 2 ch (for example `GibberlingMale_deathFatalityEngineer_01`): check the sample header of those streams.
+
+- [ ] Object card (idea, 2026-11-23): one view per object with geometry, animations, a "apply textures" button and linked sounds, thumbnails for objects. Needs the geometry-to-texture link (see `docs/formats/geometry-bin.md`, material references are not decoded).

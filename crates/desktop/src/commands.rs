@@ -540,6 +540,25 @@ async fn get_mesh(state: State<'_, AppState>, path: String) -> Result<Response, 
     Ok(Response::new(bytes))
 }
 
+/// Animation clips next to a model (virtual paths).
+#[tauri::command]
+async fn get_clips(state: State<'_, AppState>, path: String) -> Result<Vec<String>, AppError> {
+    let s = state.session()?;
+    blocking(move || s.clips_of(&path).map_err(AppError::from)).await
+}
+
+/// A model with one animation clip as a binary glTF file.
+#[tauri::command]
+async fn get_animated_glb(
+    state: State<'_, AppState>,
+    path: String,
+    clip: String,
+) -> Result<Response, AppError> {
+    let s = state.session()?;
+    let bytes = blocking(move || s.glb_animated(&path, &clip).map_err(AppError::from)).await?;
+    Ok(Response::new(bytes))
+}
+
 /// One decoded sound stream as a WAV file.
 #[tauri::command]
 async fn get_audio(
@@ -658,6 +677,8 @@ pub fn run() {
             preview,
             get_image,
             get_mesh,
+            get_clips,
+            get_animated_glb,
             get_audio,
             video_open,
             video_frames,

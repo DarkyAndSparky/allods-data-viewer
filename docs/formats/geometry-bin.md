@@ -47,11 +47,9 @@
 
 ## Next steps
 
-1. Look for the stride and sub-mesh table in the tail of the inflated data by comparing
-   several models with the same vertex count to stride ratio.
-2. Get the resource database; it probably describes geometry resources (`types.xml` lists
-   the types).
-3. Only then write a reader and a glTF export (M7).
+1. Bind textures to model elements: read the Geometry record from the database through the Fixes table (see [pack-fixes.md](pack-fixes.md)) and the root material ([common-material.md](common-material.md)).
+2. Decode the per-element `modelElements[].material` records and the `Lod` structure (60 bytes in 7.0).
+3. Find how a database record maps to its `X.(Geometry).bin` file.
 
 ## Container, confirmed (2026-11-14)
 
@@ -147,6 +145,10 @@ and `M` is its rotation in model space. Evidence:
   to 1e-5 (AirElemental 2799 vertices, Anakonda 1290). That check is circular for the matrices
   (they are built to cancel) and only proves the file is consistent; the two bullets above are the real evidence.
 
+## Матрицы костей с масштабом, модели 18.0 (verified на `Mirianna`, 2026-11-23)
+
+В `Mirianna.(Geometry).bin` (клиент 18.0, 99 костей) у 89 костей строки сохранённой матрицы имеют длину 0,8333 (то есть `1/1,2`; определитель 0,5787), у остальных (`Slot_*`, `Global`, `transform*`, `VisualSceneNode`) длина 1. Положение кости в мировом пространстве получается как обратная к `[m^T | p]`: `[m / s² | -m·p / s²]`, где `s` — длина строки; у моделей 7.0 `s = 1`, формула совпадает с прежней. Локальный перенос равен `R_p^T (w - w_p) / a_p`, масштаб узла равен `a / a_p` (`a = 1/s`). Сверка: перенос локальной позы покоя совпал с первым кадром клипа `Mirianna.Idle` у костей `ClothBack1_6_R`, `Spine2`, `Breast_L`, `RightArm`, `Global` (до четырёх знаков), у `Twist_L` (длина строки 0,815, не 0,833) не совпал (0,5866 против 0,4866). До правки клип этой модели отвергался («клип не подходит к скелету»), теперь экспорт `.glb` с анимацией проходит для `Idle`.
+
 ## Blob list (2026-11-17, verified on 295 sample files)
 
 Every geometry, animation clip and map `terrainDump` file in our samples (295 files) is an exact list of blobs, with ids 0, 1, 2 first in geometry files (`adv blobs <file>` prints the list; `adv_core::blob`). The inflated file is a plain list of blobs: `u32 localID`, `u32 size`, `size` bytes. In the
@@ -158,5 +160,65 @@ offsets), the sub-meshes (model elements with vertex and index ranges per LOD) a
 material to texture binding are **not in the `.bin`**; they are in the database record. See
 [../TOOLS-STUDY.md](../TOOLS-STUDY.md).
 
-## Declared stride (2026-11-23)
-`geometry::declared_stride(xdb)` reads the `<stride>` of the first `<vertexDeclarations>` block of a Geometry `.xdb` descriptor (accepted range 16 to 256 bytes). It is a helper with three tests; the CLI does not yet pass a descriptor, so `--stride` remains the way to set it. Status: draft; the object-image decode is NOT done.
+## Запись Geometry в базе `pack.bin` (привязка материалов, draft)
+
+Вершины, индексы и кости лежат в `.bin`, а элементы модели, материалы и текстуры описаны в записи Geometry в базе `pack.bin`. Подробные описания: [pack-bin-object-image.md](pack-bin-object-image.md) (образ данных, указатели), [pack-fixes.md](pack-fixes.md) (таблица Fixes), [common-material.md](common-material.md) (запись материала). Разделы ниже — журнал разбора по порядку; где они расходятся с этими тремя файлами, верны те файлы.
+
+### Первые образцы и что не было расшифровано
+
+Образцы: `World_Races_Folk`, `World_Races_Goblin`, `World_Races_Historian`, `Solo_Creatures_Turret.Mini` и `Solo_Creatures_AstralTurret_solo.Mini`. В паках рядом лежат `X.(Geometry).bin`, `X.(CollisionMesh).bin`, `X.(SkeletalAnimation).bin` и `Textures/*.(Texture).bin`; ни в одном `.bin` модели нет имён материалов или текстур (Turret: 3370 вершин, 7288 треугольников, 25 костей, хвост 3060 байт без строк).
+
+В распакованном образе `pack.bin` (x64, 703 896 034 байта) есть записи, которые описывают элементы модели: в образе встречаются 7516 строк вида `…_psd_SG` (имя материала элемента, например `WaterFolk_House_Wall_psd_SG`), имена элементов (`Folk_House_02`, `Folk_House_01_Snow`, `Historian_Camp_Mattock_SG`) и рядом пары `u32` с диапазонами (начало, конец) вершин и индексов. Это совпадает с полями `ModelElement` в EditorTools V14 (`materialName`, `name`, `lods` с `indexBufferBegin/End`, `vertexBufferBegin/End`, `material.diffuseTexture`). Для `World_Races_Goblin` и `Solo_Creatures_Turret` строк в этой базе нет.
+
+Не расшифровано: смещения полей в x64-образе (в EditorTools только 32-битные раскладки), связь записи Geometry с файлом `.bin` (имя файла в записи не найдено; кандидат: совпадение суммарных диапазонов элементов с числом вершин и индексов файла), указатель `diffuseTexture` на запись Texture и имя файла текстуры по ней (таблица имён этой базы содержит 519 корней). Статус: `unknown`.
+
+### Объекты Geometry в образе данных (draft, 2026-11-23)
+
+В `pack.bin` (x64) метки типов (`Database::type_tags`) дают 33 466 объектов `Geometry` (из 553 861 меток всех типов). Расстояние от метки до следующей метки у них от 648 до нескольких тысяч байт: например 648, 1320, 1424, 1608, 2000, 2120. Метка типа не обязательно покрывает все вложенные объекты (элемент `Folk_House_02` с именем и диапазонами лежит внутри области, помеченной как `Texture` размером 304 байта, то есть вложенные записи могут идти в области чужой метки). Голова Geometry в x64 содержит `f32`-значения (границы, масштабы) и пары равных `u64`-слов вида `(0x28, 0x28)`, `(0x140, 0x140)`: так, видимо, записаны массивы; смысл пар и привязка полей к `Geometry` из EditorTools V14 не подтверждены. Числа в записи элемента `Folk_House_02` (1050, 2046, 462, 960, …) не совпали с 508 вершинами и 881 треугольником файла `Folk_House_02.(Geometry).bin`, поэтому эта запись, вероятно, относится к другому файлу или поля читаются иначе. Статус: `unknown`.
+
+### Geometry в 32-битной базе, первый разбор (draft, 2026-11-23)
+
+Образец: `Solo/World/Props/Models/SA_Balloon_Chest_Default.(Geometry).xdb` в `pack.bin` клиента 1.x (Cloud Pirates, 32-битный образ, 64 739 692 байта в распакованном виде, данные с 7 999 148). Корень по `db_id` 37 496 768 даёт голову Geometry в 400 байт (это совпадает с `StructSize(400)` для `Geometry` в раскладке EditorTools V7_0_00_76): с +32 шесть `f32` границ (правдоподобный AABB: 0.056 … 2.9), с +352 и далее пары `(rel, rel)` у пустых массивов. Сразу за головой лежат вложенные записи с инлайн-строками: имена узлов (`Baloon01`, `Baloon02`), имя материала элемента `SA_Balloon_Chest_Default_psd_SG` (+1264 от корня), имя элемента `Baloon_Chest` и путь эффекта `ASS/FX/World/SA_Pirate_Balloon`. Строка лежит вплотную после своей структуры, а не по указателю из головы.
+
+Не подтверждено: правило «цель указателя = адрес поля + значение» (в тех парах `(0x2c, 0x2c)`, `(0x70, 0x70)` цель попадает внутрь самой головы), границы записи `ModelElement` и положение `diffuseTexture`. Статус: `unknown`.
+
+### Голова Geometry, проверено на двух моделях клиента 7.0 (2026-11-23)
+
+Образец: `Bin/pack.bin` клиента 7.0 (338 145 304 байта, уже без zlib, 32-битный образ, данные с 63 554 240) и файлы `ArchdemonMage.(Geometry).bin`, `Warlock.(Geometry).bin` рядом. Корни `Creatures/ArchdemonMage/ArchdemonMage.(Geometry).xdb` (`db_id` 41 865 232) и `Warlock.(Geometry).xdb` (225 265 716). Голова 400 байт, поля по смещениям из раскладки EditorTools V7_0_00_76 (`StructSize(400)`):
+
+| Смещение | Поле | ArchdemonMage | Warlock | Сверка с `.bin` |
+|---|---|---|---|---|
+| +184 / +188 | `indexBuffer` `localId` / `size` | 1 / 113 274 | 1 / 110 646 | размер = треугольники × 3 × 2 (18 879 и 18 441) |
+| +356 / +360 | `vertexBuffer` `localId` / `size` | 0 / 281 088 | 0 / 254 144 | размер = вершины × stride (7808 × 36 и 7942 × 32) |
+| +196, +200 | `joints`, байты | 2256 | 2256 | 94 кости × 24 |
+| +232, +236 | `modelElements`, байты | 1080 | 240 | 9 и 2 элемента × 120 |
+| +368, +372 | `vertexDeclarations`, байты | 116 | 116 | 1 × 116 |
+
+Массив здесь занимает 16 байт: `u32 0`, байты, байты, `u32 0`. Вместо числа элементов записан размер в байтах (делится на размер элемента), а первое слово 0 — это указатель на начало, который подставляет таблица Fixes. Вывод по `stride` и числу вершин в `.bin` не нужен: он лежит в `vertexDeclarations`. Статус: `verified` для этих полей на двух моделях; `unknown` для содержимого массивов (элементы, материалы, текстуры): нужно разобрать таблицу Fixes (чанк 4, записи по 8 байт; примеры пар: `0x26,0`, `0x51,72`, `0x35e,0`, `0x389,484`; низшие три бита первого слова принимают значения 0, 1, 5, 6, 7), чтобы узнать, куда указывает пустое начало массива.
+
+### Первый просмотр записи Geometry в 18.0 и расположение массивов (draft, 2026-11-23)
+
+Модель `Mirianna` (клиент 18.0: `Mirianna.(Geometry).bin`, 4465 вершин со stride 32, 10 058 треугольников, 99 костей, блок после индексов 12 180 байт). В распакованном `pack.bin` 18.0 (723 056 098 байт) числа из файла находятся рядом: размер буфера индексов 60 348 (`10 058 × 3 × 2`), в 304 байтах дальше размер буфера вершин 142 880 (`4465 × 32`), между ними 12 180; имя материала `Mirianna_SG` лежит в 6 КиБ от головы (121 610 612). Массивы записаны тройками `u64` (начало 0, конец, ёмкость): у костей 3960 = 99 × 40, у объявлений вершин 116; ещё два массива с размерами 1152 и 704 не сопоставлены. Значит в x64 запись кости 40 байт (в 7.0 — 24).
+
+В 7.0 для `ArchdemonMage.(Geometry).xdb` расстояние до следующей метки 3852 байта равно `400 + 1080 + 2256 + 116`: голова, элементы, кости и объявления вершин лежат подряд сразу за головой, значит начало каждого массива (слово 0) указывает на конец предыдущего. За головой с +400 идут записи, которые выглядят как `ModelElement` (в начале шесть `f32` границ, потом `3`, `238700` и повторы по 28 байт с `65535`); границы полей `ModelElement` и положение материала не подтверждены, имён материалов среди инлайн-строк 7.0 нет (материал, видимо, ссылка на другой объект). Статус: `unknown`.
+
+### ModelElement в образе 7.0, записи `Warlock.(Geometry)` (draft, 2026-11-23)
+
+Корень `Creatures/ArchdemonMage/Warlock.(Geometry).xdb` занимает 3176 байт (до следующего корня `Warlock.(Texture).xdb`). Массивы и строки записаны тройкой `u32` (начало, размер в байтах, ёмкость): у непустого массива начало 0 (его подставляет таблица Fixes), у пустого все три слова равны одному «живому» адресу сборочной машины (`0x3a13c918`). Строка — такая же тройка: `(0, длина, ёмкость)`, текст лежит вне структуры. Так читаются `ModelElement` из раскладки EditorTools V7:
+
+| Смещение в элементе | Поле | Элемент 0 | Элемент 1 |
+|---|---|---|---|
+| +4 | `linkedElements` (тройка) | пусто | пусто |
+| +20 | `lods` (тройка) | 0, 60, 60 → один `Lod` в 60 байт | то же |
+| +36…+76 | `material` (40 байт) | в +48 хвост `\0xdb` (путь на `.xdb`), остальное нули | нули |
+| +76 | `materialName` (тройка) | длина 10, ёмкость 17 | длина 10, ёмкость 17 |
+| +88 | `name` (тройка) | длина 9, ёмкость 17 | длина 11, ёмкость 17 |
+| +100…+112 | `skinIndex`, `vertexBufferOffset`, `vertexDeclarationID`, `virtualOffset` | 0, 0, 0, 0 | 0, 0, 0, 0 |
+
+Элементы идут подряд по 120 байт, расстояние между векторами `lods` у элемента 0 (+2896) и элемента 1 (+3016) равно 120. Массив начинается со смещения +2876 от корня, после тексты имён костей (94 кости × 24 байта с +400; длинные имена `SkirtFront4_L`, `StaffChainA1` лежат с +2655). Раскладка внутри корня не равна порядку полей головы: массивы идут в порядке обхода, а не по полям, поэтому границу массива находят по соседним записям, а не по сумме размеров.
+
+Не расшифровано: где лежат тексты `materialName` и `name` (в записи их нет, начало равно 0), как устроен `Lod` (60 байт), какой путь хранится в `ResourcePointer diffuseTexture` (виден только хвост `xdb`). Статус: `draft` для смещений `ModelElement` (совпали с V7 на двух элементах), `unknown` для текстов.
+
+### Объявленный stride (2026-11-23)
+
+`geometry::declared_stride(xdb)` читает `<stride>` первого блока `<vertexDeclarations>` описания Geometry в `.xdb` (допустимо от 16 до 256 байт). Это вспомогательная функция с тремя тестами; CLI пока не передаёт описание, поэтому stride по-прежнему задаётся `--stride`. Статус: `draft`; разбор образа объекта не закончен.

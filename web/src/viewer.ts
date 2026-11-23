@@ -1,10 +1,16 @@
 import {
   AmbientLight,
+  AnimationAction,
+  AnimationMixer,
+  Clock,
+  Object3D,
   BufferAttribute,
   BufferGeometry,
   Color,
   DirectionalLight,
   Group,
+  LoopOnce,
+  LoopRepeat,
   Mesh as ThreeMesh,
   MeshStandardMaterial,
   PerspectiveCamera,
@@ -12,6 +18,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Mesh } from "./mesh";
 
 /** A small orbit viewer for one untextured model. Call `dispose` when it is no longer shown. */
@@ -26,6 +33,12 @@ export class ModelViewer {
   private pivot = new Group();
   private observer: ResizeObserver;
   private frame = 0;
+  private clock = new Clock();
+  private mixer: AnimationMixer | null = null;
+  private animated: Object3D | null = null;
+  private action: AnimationAction | null = null;
+  private looping = true;
+  private paused = false;
   private radius = 1;
   private center: [number, number, number] = [0, 0, 0];
 
@@ -66,6 +79,8 @@ export class ModelViewer {
     const tick = () => {
       this.frame = requestAnimationFrame(tick);
       this.controls.update();
+      const dt = this.clock.getDelta();
+      if (this.mixer && !this.paused) this.mixer.update(dt);
       this.renderer.render(this.scene, this.camera);
     };
     tick();
@@ -96,6 +111,66 @@ export class ModelViewer {
     this.pivot.rotation.x = on ? -Math.PI / 2 : 0;
   }
 
+  /**
+   * Replaces the static mesh with a skinned model from a binary glTF file and plays its first
+   * animation (looping unless `setLoop(false)` was called). Throws when the file cannot be read as glTF.
+   */
+  async playGlb(buf: ArrayBuffer): Promise<void> {
+    const gltf = await new GLTFLoader().parseAsync(buf, "");
+    this.stopAnimation();
+    gltf.scene.traverse((o) => {
+      const m = o as ThreeMesh;
+      if (m.isMesh) {
+        m.material = this.material;
+        m.frustumCulled = false;
+      }
+    });
+    gltf.scene.position.copy(this.mesh.position);
+    this.mesh.visible = false;
+    this.pivot.add(gltf.scene);
+    this.animated = gltf.scene;
+    const clip = gltf.animations[0];
+    if (clip) {
+      this.mixer = new AnimationMixer(gltf.scene);
+      this.action = this.mixer.clipAction(clip);
+      this.action.clampWhenFinished = true;
+      this.applyLoop();
+      this.action.play();
+    }
+    this.paused = false;
+  }
+
+  /** Back to the static mesh. */
+  stopAnimation(): void {
+    this.mixer?.stopAllAction();
+    this.mixer = null;
+    this.action = null;
+    if (this.animated) this.pivot.remove(this.animated);
+    this.animated = null;
+    this.mesh.visible = true;
+  }
+
+  /** Loop (default) or play the animation once and stay on its last frame. */
+  setLoop(on: boolean): void {
+    this.looping = on;
+    this.applyLoop();
+    if (on && this.action && !this.action.isRunning()) this.action.reset().play();
+  }
+
+  private applyLoop(): void {
+    this.action?.setLoop(this.looping ? LoopRepeat : LoopOnce, Infinity);
+  }
+
+  /** Pauses or resumes the playing animation. */
+  setPaused(on: boolean): void {
+    this.paused = on;
+  }
+
+  /** Current time of the playing animation in seconds (0 without one). */
+  animationTime(): number {
+    return this.mixer?.time ?? 0;
+  }
+
   private resize(): void {
     const w = Math.max(this.host.clientWidth, 1);
     const h = Math.max(this.host.clientHeight, 1);
@@ -108,6 +183,7 @@ export class ModelViewer {
 
   dispose(): void {
     cancelAnimationFrame(this.frame);
+    this.mixer?.stopAllAction();
     this.observer.disconnect();
     this.controls.dispose();
     this.geometry.dispose();

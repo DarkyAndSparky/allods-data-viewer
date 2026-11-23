@@ -308,6 +308,10 @@ npm test
 npm run build
 ```
 
+## Участники
+
+Список в [CONTRIBUTORS.md](CONTRIBUTORS.md). Вклад приветствуется, правила в [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Правовая часть
 
 Проект независимый и не связан с разработчиками и издателями игры. В репозитории нет

@@ -310,20 +310,20 @@ pub fn decode_raw(data: &[u8], width: u32, height: u32, raw: Raw) -> Result<Vec<
     let ex6 = |v: u16| ((u32::from(v) * 255 + 31) / 63) as u8;
     match raw {
         Raw::Rgb565 => {
-            for c in data.chunks_exact(2) {
-                let v = u16::from_le_bytes([c[0], c[1]]);
+            for c in data.as_chunks::<2>().0 {
+                let v = u16::from_le_bytes(*c);
                 out.extend_from_slice(&[ex5(v >> 11), ex6((v >> 5) & 63), ex5(v & 31), 255]);
             }
         }
         Raw::Rgba4444 => {
-            for c in data.chunks_exact(2) {
-                let v = u16::from_le_bytes([c[0], c[1]]);
+            for c in data.as_chunks::<2>().0 {
+                let v = u16::from_le_bytes(*c);
                 let n = |s: u16| (((v >> s) & 15) * 17) as u8;
                 out.extend_from_slice(&[n(8), n(4), n(0), n(12)]);
             }
         }
         Raw::Bgra8888 => {
-            for c in data.chunks_exact(4) {
+            for c in data.as_chunks::<4>().0 {
                 out.extend_from_slice(&[c[2], c[1], c[0], c[3]]);
             }
         }

@@ -128,7 +128,7 @@
     },
     {
       "name": "zip",
-      "version": "9.5.0",
+      "version": "9.8.1",
       "license": "MIT",
       "url": "https://github.com/zip-rs/zip2",
       "kind": "rust",

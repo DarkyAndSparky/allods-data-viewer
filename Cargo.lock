@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "adv-cli"
-version = "0.1.73"
+version = "0.1.74"
 dependencies = [
  "adv-core",
  "clap",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "adv-core"
-version = "0.1.73"
+version = "0.1.74"
 dependencies = [
  "flate2",
  "lzma-rust2",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "adv-desktop"
-version = "0.1.73"
+version = "0.1.74"
 dependencies = [
  "adv-core",
  "adv-session",
@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "adv-session"
-version = "0.1.73"
+version = "0.1.74"
 dependencies = [
  "adv-core",
  "flate2",
