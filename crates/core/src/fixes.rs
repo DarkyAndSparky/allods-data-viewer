@@ -3,9 +3,10 @@
 //! Layout (inflated pack, little endian, see `docs/formats/pack-fixes.md`):
 //! `u32 id = 4`, `u32 count`, then `count` entries of `u32 d`, `u32 v`.
 //! `d = (offset / 4) << 3 | tag`, where `offset` is relative to the data block. The tag
-//! values seen in the 7.0 pack are 0, 1, 5, 6 and 7; tag 5 points at a NUL-terminated string
-//! at the blob offset `v`. Status: the layout and tag split are verified on the 7.0 pack; the
-//! meaning of tags 0, 1, 6 and 7 is not decoded.
+//! values seen in the 7.0 pack are 0, 1, 5, 6 and 7. Tag 5 points at a pointer to an array or
+//! sub-object header at the blob offset `v` (about 11 % of tag-5 targets are NUL-terminated strings).
+//! Status: the layout and tag split are verified on the 7.0 pack; the meaning of tags 0, 1, 6 and 7
+//! is not decoded, and the tag-5 target classes are measured, not decoded.
 
 use crate::error::{Error, Result};
 use crate::limits::Limits;
@@ -87,7 +88,7 @@ mod tests {
 
     #[test]
     fn parses_offset_tag_and_value() {
-        // d = (16 / 4) << 3 | 5 : offset 16, tag 5 (string pointer); value is a blob offset.
+        // d = (16 / 4) << 3 | 5 : offset 16, tag 5 (pointer to an array or sub-object); value is a blob offset.
         let data = block(&[((4 << 3) | 5, 1234), ((8 << 3) | 1, 0)], 2);
         let fixes = parse_fixes(&data, 0, &Limits::default()).unwrap();
         assert_eq!(

@@ -12,7 +12,7 @@
 | --- | ---: | --- |
 | 0 | 2 982 074 | not decoded |
 | 1 | 1 962 584 | not decoded |
-| 5 | 542 566 | string pointer: `v` is a blob offset to a NUL-terminated text (about 17 % of tag-5 targets are printable on the sample; the rest are not yet classified) |
+| 5 | 542 566 | pointer to an array or sub-object header at blob offset `v` (client pack: 42.9 % u32 array or header words, 25.5 % small values below 0x10000, 20.8 % pointer pairs with a size, 10.8 % printable NUL-terminated strings, 0.0 % UTF-16). Not a string pointer. |
 | 6 | 423 250 | not decoded (equals the xdb entry count; coincidence not checked) |
 | 7 | 616 985 | not decoded |
 
