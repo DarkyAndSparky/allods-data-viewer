@@ -31,4 +31,5 @@ notes here. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the rules and
 | `Version/DataPacksInfo.bin` pak and file list | draft | [data-packs-info.md](data-packs-info.md) |
 | Pictures (`.ico`, `.dds`, JPEG/GIF/BMP size) | verified on one icon and one DDS | [pictures.md](pictures.md) |
 | SVG sanitization | verified in core; browser rendering separate | [svg.md](svg.md) |
-| Materials (model to texture binding) | unknown in `.bin`; lives in the database record (Geometry, ModelElement, Material); layouts known for 1.1.02.0 only | [../TOOLS-STUDY.md](../TOOLS-STUDY.md) |
+| Materials (model to texture binding) | draft for 7.0 (element ranges and `diffuseTexture` verified on two models); 18.0 not read | [model-binding.md](model-binding.md) |
+| Sound to object binding | draft: record types found in 7.0 and 18.0, layouts unknown | [sound-binding.md](sound-binding.md) |

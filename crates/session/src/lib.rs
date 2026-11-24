@@ -269,7 +269,11 @@ struct OpenPak {
 }
 
 /// Texture width and height by lower-case resource name.
+/// Largest texture picture embedded in an exported model.
+const MAX_TEXTURE_PNG: usize = 16 * 1024 * 1024;
+
 type TextureSizes = HashMap<String, (u32, u32)>;
+type ModelBindings = HashMap<String, Vec<adv_core::binding::ElementBinding>>;
 
 /// An opened data folder or single archive.
 pub struct Session {
@@ -284,6 +288,8 @@ pub struct Session {
     base_pak: std::sync::OnceLock<Option<PathBuf>>,
     /// Texture records of the resource databases (`pack` and `Maps_<name>`), by lower-case name.
     texdbs: Mutex<HashMap<String, Arc<TextureSizes>>>,
+    /// Model elements and their textures from the 7.0 pack, by lower-case `…(Geometry).xdb`.
+    bindings: Mutex<Option<Arc<ModelBindings>>>,
     /// The video the player is reading (virtual path and decoder), so frames come in order.
     video: Mutex<Option<(String, adv_core::video::VideoStream)>>,
 }
@@ -296,7 +302,8 @@ enum Target {
     Pak { file: PathBuf, inner: String },
 }
 
-/// Collects `BaseLoc*.pak` files (not the HiRes or Mini variants) up to three levels deep.
+/// Collects the paks that may carry the resource databases (`BaseLoc*.pak`, `Bin.pak`,
+/// `System*.pak`; not the HiRes or Mini variants) up to three levels deep.
 fn collect_base_paks(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     if depth > 3 {
         return;
@@ -309,7 +316,9 @@ fn collect_base_paks(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
         let name = e.file_name().to_string_lossy().to_ascii_lowercase();
         if p.is_dir() {
             collect_base_paks(&p, depth + 1, out);
-        } else if name.starts_with("baseloc")
+        } else if (name.starts_with("baseloc")
+            || name.starts_with("bin.")
+            || name.starts_with("system"))
             && name.ends_with(".pak")
             && !name.contains("hires")
             && !name.contains("mini")
@@ -369,6 +378,7 @@ impl Session {
             video: Mutex::new(None),
             base_pak: std::sync::OnceLock::new(),
             texdbs: Mutex::new(HashMap::new()),
+            bindings: Mutex::new(None),
         };
         if let Some(name) = &session.only {
             if !is_pak(name) {
@@ -960,23 +970,61 @@ impl Session {
         index
     }
 
+    /// A loose copy of a database (`Bin/pack.bin` unpacked next to the data), searched up to
+    /// three levels below the opened folder.
+    fn loose_db(&self, entry: &str) -> Option<Vec<u8>> {
+        fn walk(dir: &Path, depth: u32, tail: &str) -> Option<PathBuf> {
+            for e in std::fs::read_dir(dir).ok()?.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    if depth < 3
+                        && let Some(f) = walk(&p, depth + 1, tail)
+                    {
+                        return Some(f);
+                    }
+                } else if p
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .to_ascii_lowercase()
+                    .ends_with(tail)
+                {
+                    return Some(p);
+                }
+            }
+            None
+        }
+        let tail = format!("/{}", entry.to_ascii_lowercase());
+        let file = walk(&self.root, 0, &tail)?;
+        let meta = std::fs::metadata(&file).ok()?;
+        if meta.len() > self.limits.max_entry_size {
+            return None;
+        }
+        std::fs::read(file).ok()
+    }
+
     fn load_texture_db(&self, entry: &str) -> Option<TextureSizes> {
-        let base = self.base_pak()?;
-        let raw = self
-            .with_pak(base, |open| {
-                let e = open
-                    .pak
-                    .entries()
-                    .iter()
-                    .find(|e| e.path.as_str().eq_ignore_ascii_case(entry))
-                    .cloned()
-                    .ok_or_else(|| SessionError::NotFound(entry.to_owned()))?;
-                open.pak
-                    .read(&e, Layer::Raw)
-                    .map(|(d, _)| d)
-                    .map_err(|e| SessionError::Failed(format!("{entry}: {e}")))
-            })
-            .ok()?;
+        let raw = match self.base_pak() {
+            Some(base) => self
+                .with_pak(base, |open| {
+                    let e = open
+                        .pak
+                        .entries()
+                        .iter()
+                        .find(|e| e.path.as_str().eq_ignore_ascii_case(entry))
+                        .cloned()
+                        .ok_or_else(|| SessionError::NotFound(entry.to_owned()))?;
+                    open.pak
+                        .read(&e, Layer::Raw)
+                        .map(|(d, _)| d)
+                        .map_err(|e| SessionError::Failed(format!("{entry}: {e}")))
+                })
+                .ok(),
+            None => None,
+        };
+        let raw = match raw {
+            Some(r) => r,
+            None => self.loose_db(entry)?,
+        };
         // Look at the first bytes before inflating hundreds of megabytes.
         let layout = db::probe_layout(&raw);
         if layout == db::Layout::Unsupported {
@@ -986,6 +1034,13 @@ impl Session {
         drop(raw);
         if layout == db::Layout::Bits32 {
             let db = db32::parse(&data, &self.limits).ok()?;
+            if entry.eq_ignore_ascii_case("Bin/pack.bin")
+                && let Ok(fx) = adv_core::fixes::parse_fixes(&data, db.data.end, &self.limits)
+                && let Ok(map) = adv_core::binding::all_geometries(&db, &data, &fx, &self.limits)
+                && let Ok(mut slot) = self.bindings.lock()
+            {
+                *slot = Some(Arc::new(map));
+            }
             return Some(db.texture_sizes(&data));
         }
         let db = db::parse_db(&data, &self.limits).ok()?;
@@ -1169,6 +1224,89 @@ impl Session {
         let name = clip.rsplit('/').next().unwrap_or(clip);
         preview::mesh_glb_animated(&data, &clip_data, name, &self.limits)
             .map_err(|e| SessionError::Failed(format!("{clip}: {e}")))
+    }
+
+    /// Element bindings of a model from the resource database (7.0 packs only) and the part of
+    /// the model's path before the resource name (where its textures are looked up).
+    fn bindings_of(
+        &self,
+        vpath: &str,
+    ) -> Result<(Vec<adv_core::binding::ElementBinding>, String), SessionError> {
+        let stem = vpath
+            .strip_suffix(".(Geometry).bin")
+            .or_else(|| vpath.strip_suffix(".(geometry).bin"))
+            .ok_or_else(|| SessionError::NotFound(format!("{vpath}: not a Geometry file")))?;
+        drop(self.texture_db("pack", "Bin/pack.bin"));
+        let map = self.bindings.lock().ok().and_then(|g| g.clone()).ok_or_else(|| {
+            SessionError::NotFound(
+                "no resource database with model bindings: open the client folder that holds BaseLoc*.pak (Bin/pack.bin), only client 7.0 is supported"
+                    .to_owned(),
+            )
+        })?;
+        // The resource name is the longest tail of the path that the database knows; what comes
+        // before it is the folder of the data (a pak, or the unpacked client root).
+        let lower = stem.to_ascii_lowercase();
+        let mut start = 0;
+        loop {
+            let key = format!("{}.(geometry).xdb", &lower[start..]);
+            if let Some(list) = map.get(&key) {
+                return Ok((list.clone(), stem[..start].to_owned()));
+            }
+            match lower[start..].find('/') {
+                Some(n) => start += n + 1,
+                None => {
+                    return Err(SessionError::NotFound(format!(
+                        "{vpath}: the model is not in the resource database"
+                    )));
+                }
+            }
+        }
+    }
+
+    /// The model as a binary glTF file with the textures of its elements and, optionally, one
+    /// animation clip. Textures are looked up next to the model, in the same archive.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the pack has no binding for the model (only 7.0 packs are supported), or a
+    /// file cannot be read or is not consistent.
+    pub fn glb_textured(&self, vpath: &str, clip: Option<&str>) -> Result<Vec<u8>, SessionError> {
+        let data = self.read(vpath)?;
+        let (elements, prefix) = self.bindings_of(vpath)?;
+        let prefix = prefix.as_str();
+        let mut cache: HashMap<String, Option<Vec<u8>>> = HashMap::new();
+        let mut parts = Vec::new();
+        for e in &elements {
+            let png = e.diffuse.as_deref().and_then(|name| {
+                cache
+                    .entry(name.to_owned())
+                    .or_insert_with(|| {
+                        let stem = name.strip_suffix(".(texture).xdb")?;
+                        let path = format!("{prefix}{stem}.(Texture).bin");
+                        match self.preview(&path, Options::default()).ok()? {
+                            Preview::Image { png, .. } if png.len() <= MAX_TEXTURE_PNG => Some(png),
+                            _ => None,
+                        }
+                    })
+                    .clone()
+            });
+            parts.push(adv_core::geometry::MeshPart {
+                index_begin: e.index_begin,
+                index_end: e.index_end,
+                png,
+            });
+        }
+        let clip_data = match clip {
+            Some(c) => Some((self.read(c)?, c.rsplit('/').next().unwrap_or(c).to_owned())),
+            None => None,
+        };
+        preview::mesh_glb_textured(
+            &data,
+            &parts,
+            clip_data.as_ref().map(|(d, n)| (d.as_slice(), n.as_str())),
+            &self.limits,
+        )
+        .map_err(|e| SessionError::Failed(format!("{vpath}: {e}")))
     }
 
     /// Animation clips that belong to a model: `.(SkeletalAnimation).bin` files in its folder and
@@ -1946,6 +2084,18 @@ mod tests {
     }
 
     #[test]
+    fn textured_glb_needs_a_binding_from_the_database() {
+        let dir = tempfile::tempdir().expect("tmp");
+        std::fs::write(dir.path().join("Hero.(Geometry).bin"), b"x").expect("write");
+        let s = Session::open(dir.path()).expect("open");
+        assert!(matches!(
+            s.glb_textured("Hero.(Geometry).bin", None),
+            Err(SessionError::NotFound(_))
+        ));
+        assert!(s.glb_textured("Missing.(Geometry).bin", None).is_err());
+    }
+
+    #[test]
     fn clips_of_finds_the_clips_next_to_a_model() {
         let dir = tempfile::tempdir().expect("tmp");
         let m = dir.path().join("Hero");
@@ -2023,6 +2173,23 @@ mod tests {
         assert_eq!(
             s.base_pak().expect("found").file_name().expect("name"),
             "BaseLoceng.pak"
+        );
+    }
+
+    #[test]
+    fn base_pak_also_finds_bin_pak_and_skips_packs_without_a_database() {
+        let dir = tempfile::tempdir().expect("tmp");
+        pak(
+            &dir.path().join("System.Mini.pak"),
+            &[("Bin/pack.bin", b"x")],
+        );
+        pak(&dir.path().join("System.0.pak"), &[("Other/a.txt", b"x")]);
+        pak(&dir.path().join("Bin.pak"), &[("Bin/pack.bin", b"x")]);
+        let s = Session::open(dir.path()).expect("open");
+        // `System.Mini.pak` is skipped, `Bin.pak` wins over `System.0.pak`, which has no `Bin/`.
+        assert_eq!(
+            s.base_pak().expect("found").file_name().expect("name"),
+            "Bin.pak"
         );
     }
 

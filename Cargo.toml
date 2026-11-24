@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/core", "crates/cli", "crates/session", "crates/desktop"]
 
 [workspace.package]
-version = "0.1.74"
+version = "0.1.81"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -18,8 +18,8 @@ theora-rs = "=0.1.0"
 serde_json = "1.0.154"
 zip = { version = "9.5.0", default-features = false, features = ["deflate-flate2"] }
 clap = { version = "4", features = ["derive"] }
-adv-core = { path = "crates/core", version = "0.1.74" }
-adv-session = { path = "crates/session", version = "0.1.74" }
+adv-core = { path = "crates/core", version = "0.1.81" }
+adv-session = { path = "crates/session", version = "0.1.81" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

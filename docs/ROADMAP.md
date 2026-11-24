@@ -14,8 +14,8 @@ Goal: one tool to browse, extract, convert and (into new archives) pack all data
 | M5 | Desktop app | Tauri window, file tree, text and texture preview, audio player, About dialog | done; Windows build used by the maintainer since 0.1.3, visual checks of the newest UI pending |
 | M6 | Resource databases | `.bin` databases to JSON/XML, version detection | partial: 64-bit V2 reader (`db`), 32-bit reader (`db32`: Cloud Pirates 1.5, client 10.0 `pack.bin` and `Maps_*.bin`), texture sizes feed the viewer; JSON/XML export and the object image (Geometry, Material) not decoded |
 | M7 | Models | export geometry to glTF | done (OBJ and GLB); some models (`Ship4_Hull`, `ElfFemale`) do not read yet |
-| M8 | Materials | find how a model refers to its textures, export glTF with textures | not started; record layouts are known from PDBs and the XML database, binding to real data is next |
-| M9 | 3D viewer | Three.js preview of models **with textures applied** | partial: viewer works without textures |
+| M8 | Materials | find how a model refers to its textures, export glTF with textures | partial: 7.0 binding (element ranges and diffuse texture) read from `pack.bin` and exported to glTF (0.1.75); 18.0 and the other material fields not done |
+| M9 | 3D viewer | Three.js preview of models **with textures applied** | partial: 7.0 models get textures with the "Apply textures" switch (0.1.75); checked only headless |
 | M10 | Pack | write a **new** `.pak` from a folder (zlib layer, CRC32), never touching originals | not started (no `adv pack` yet); detailed in [SPEC](SPEC-audit-and-modding.md) block C |
 | M11 | Skeletons and animations | decode clips, export glTF animation, play in the viewer | partial: decoder, glTF export and the player (clip list, pause, loop; 0.1.74) done; checked only headless |
 | M12 | Maps and locations viewer | open map tiles and locations, render chunks top-down, assemble a global map with zoom and pan | not started; `Maps_*.bin` turned out to be resource databases of the same family as `pack.bin` (names, texture sizes readable, terrain objects not) |
@@ -107,4 +107,6 @@ Note: replacing files inside a game client can break the game updater or its ter
 - [x] `.bev` (FEV project) viewer: names, event paths, languages (`crates/core/src/bev.rs`); event data `LGCY` not decoded. FSB4 codecs beyond IMA/PCM wait for samples.
 - [ ] Streams of some banks show 8000 Hz / 0:00 / 2 ch (for example `GibberlingMale_deathFatalityEngineer_01`): check the sample header of those streams.
 
+- [ ] Sounds of an object in the window (0.1.80 has `adv db sound`): list events of a character with play buttons from the `.bsb` banks; creature sounds come from effect records (see `docs/formats/sound-binding.md`).
+- [x] Thumbnails of textures and models in the folder view (0.1.81, static). Next: live model on hover/click with the Idle clip.
 - [ ] Object card (idea, 2026-11-23): one view per object with geometry, animations, a "apply textures" button and linked sounds, thumbnails for objects. Needs the geometry-to-texture link (see `docs/formats/geometry-bin.md`, material references are not decoded).

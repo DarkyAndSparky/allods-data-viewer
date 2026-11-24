@@ -47,9 +47,8 @@
 
 ## Next steps
 
-1. Bind textures to model elements: read the Geometry record from the database through the Fixes table (see [pack-fixes.md](pack-fixes.md)) and the root material ([common-material.md](common-material.md)).
-2. Decode the per-element `modelElements[].material` records and the `Lod` structure (60 bytes in 7.0).
-3. Find how a database record maps to its `X.(Geometry).bin` file.
+1. Binding of elements to textures in 7.0 is done: [model-binding.md](model-binding.md). Left: the 18.0 layout and the other material fields.
+2. Skinned element data (`skinIndex`, `virtualOffset`).
 
 ## Container, confirmed (2026-11-14)
 

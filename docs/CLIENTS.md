@@ -12,3 +12,5 @@ Collected from user-made file lists and sample packs (no game files are stored i
 | Map editor package | `GameText.pak`, `GameTextV2.pak`, `GameTextV7.pak`, `Interface.Other.pak`, 144 `.pdb` | loose `data` tree (about 238k files) with `.xdb` only for `StaticObject`, `ZoneResource`, `ZoneLights`, `Sound2DTassel`, `Character`; `.bin` records without a visible database |
 
 Open question for all clients: where the binary resource database lives (the file that holds `Geometry`, `Texture`, `Material` records). Candidates: `Version.pak`, `Client.Mini.pak`, or a `Datapackinfo.bin`-style index.
+
+What works on which generation: [SUPPORTED-VERSIONS.md](SUPPORTED-VERSIONS.md).

@@ -49,5 +49,4 @@ Earlier `<params>`-only scans dropped the rootMaterial blocks and are superseded
 ## Not yet decoded
 
 - Scalar and flag fields: read at the offsets above; constant across the oracle set.
-- Per-element materials (`modelElements[].material`, a separate 40-byte wrapper with `diffuseTexture` at +8
-  and `params` at +16) are not decoded here and were not tested in the pack.
+- Per-element materials (`modelElements[].material`, a 40-byte wrapper with `diffuseTexture` at +8 and `params` at +16): the `params` pointer leads to the same 84-byte record and decodes with `parse_common_material` (checked on `Warlock`, see [model-binding.md](model-binding.md)); the scalar fields are still not an independent check.

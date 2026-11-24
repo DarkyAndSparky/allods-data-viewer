@@ -27,6 +27,25 @@ pub struct Geometry {
     pub tail: Vec<u8>,
 }
 
+/// One part of a textured export: a range of the index buffer and the picture for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MeshPart {
+    /// First index of the part.
+    pub index_begin: u32,
+    /// One past the last index.
+    pub index_end: u32,
+    /// PNG picture used as the base colour, when the part has a texture.
+    pub png: Option<Vec<u8>>,
+}
+
+#[derive(Default)]
+struct PartsJson {
+    primitives: String,
+    materials: String,
+    accessors: String,
+    views: String,
+}
+
 /// One decoded vertex.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vertex {
@@ -281,7 +300,22 @@ impl Geometry {
     ///
     /// Fails when the mesh has no vertices or no triangles, or is too large for glTF.
     pub fn to_glb(&self) -> Result<Vec<u8>> {
-        self.glb(None)
+        self.glb(None, &[])
+    }
+
+    /// Like [`Geometry::to_glb`], but the mesh is split into one primitive per part and a part
+    /// with a picture gets a material with that PNG as its base colour texture. A part whose
+    /// index range does not fit the mesh is skipped; with no usable part the mesh is one primitive.
+    ///
+    /// # Errors
+    ///
+    /// Fails like [`Geometry::to_glb`].
+    pub fn to_glb_textured(
+        &self,
+        parts: &[MeshPart],
+        clip: Option<(&crate::animation::Clip, &str)>,
+    ) -> Result<Vec<u8>> {
+        self.glb(clip, parts)
     }
 
     /// Like [`Geometry::to_glb`], and adds the clip as a glTF animation (translation and rotation
@@ -293,10 +327,14 @@ impl Geometry {
     /// Fails like [`Geometry::to_glb`], and when the model has no usable skeleton or the clip's
     /// bone count differs from it.
     pub fn to_glb_animated(&self, clip: &crate::animation::Clip, name: &str) -> Result<Vec<u8>> {
-        self.glb(Some((clip, name)))
+        self.glb(Some((clip, name)), &[])
     }
 
-    fn glb(&self, clip: Option<(&crate::animation::Clip, &str)>) -> Result<Vec<u8>> {
+    fn glb(
+        &self,
+        clip: Option<(&crate::animation::Clip, &str)>,
+        parts: &[MeshPart],
+    ) -> Result<Vec<u8>> {
         let verts = self.vertices();
         if verts.is_empty() || self.indices.is_empty() {
             return Err(Error::format("the mesh has no vertices or no triangles"));
@@ -341,11 +379,17 @@ impl Geometry {
             extra_views.push_str(&views);
             skin_json.push_str(&anim);
         }
+        let parts_json = self.parts_json(parts, &mut bin, &extra_access, &extra_views);
+        extra_access.push_str(&parts_json.accessors);
+        extra_views.push_str(&parts_json.views);
+        while bin.len() % 4 != 0 {
+            bin.push(0);
+        }
         let json = format!(
             concat!(
                 r#"{{"asset":{{"version":"2.0","generator":"Allods Data Viewer"}},"#,
                 r#""scene":0,"scenes":[{{"nodes":[{scene_nodes}]}}],"nodes":[{nodes}],{skins}"#,
-                r#""meshes":[{{"primitives":[{{"attributes":{{"POSITION":0,"TEXCOORD_0":1{attr}}},"indices":2}}]}}],"#,
+                r#""meshes":[{{"primitives":[{prims}]}}],{materials}"#,
                 r#""accessors":[{{"bufferView":0,"componentType":5126,"count":{vc},"type":"VEC3","min":[{x0},{y0},{z0}],"max":[{x1},{y1},{z1}]}},"#,
                 r#"{{"bufferView":1,"componentType":5126,"count":{vc},"type":"VEC2"}},"#,
                 r#"{{"bufferView":2,"componentType":5123,"count":{ic},"type":"SCALAR"}}{access}],"#,
@@ -365,7 +409,8 @@ impl Geometry {
                 format!(r#"{{"mesh":0,"skin":0}},{node_json}"#)
             },
             skins = skin_json,
-            attr = extra_attr,
+            prims = parts_json.primitives.replace("{attr}", &extra_attr),
+            materials = parts_json.materials,
             access = extra_access,
             views = extra_views,
             vc = verts.len(),
@@ -398,6 +443,90 @@ impl Geometry {
         out.extend(b"BIN\0");
         out.extend(bin);
         Ok(out)
+    }
+
+    /// JSON pieces for the parts of a textured export; appends the pictures to `bin`.
+    /// `{attr}` in the primitives is replaced by the caller (skin attributes).
+    fn parts_json(
+        &self,
+        parts: &[MeshPart],
+        bin: &mut Vec<u8>,
+        access: &str,
+        views: &str,
+    ) -> PartsJson {
+        let total = self.indices.len();
+        let usable: Vec<(usize, usize, &MeshPart)> = parts
+            .iter()
+            .filter_map(|p| {
+                let (a, z) = (
+                    usize::try_from(p.index_begin).ok()?,
+                    usize::try_from(p.index_end).ok()?,
+                );
+                (a < z && z <= total).then_some((a, z, p))
+            })
+            .collect();
+        if usable.is_empty() {
+            return PartsJson {
+                primitives: r#"{"attributes":{"POSITION":0,"TEXCOORD_0":1{attr}},"indices":2}"#
+                    .to_owned(),
+                ..PartsJson::default()
+            };
+        }
+        let acc_n = 3 + access.matches(r#"{"bufferView""#).count();
+        let mut view_n = 3 + views.matches(r#""buffer":0"#).count();
+        let mut out = PartsJson::default();
+        let mut pictures: Vec<&[u8]> = Vec::new();
+        let (mut materials, mut textures, mut images) =
+            (String::new(), String::new(), String::new());
+        let mut prims = Vec::new();
+        let first_acc = acc_n;
+        for (k, (a, z, p)) in usable.into_iter().enumerate() {
+            let acc_n = first_acc + k;
+            let mut material = String::new();
+            if let Some(png) = p.png.as_deref() {
+                let at = pictures.iter().position(|x| *x == png).unwrap_or_else(|| {
+                    while !bin.len().is_multiple_of(4) {
+                        bin.push(0);
+                    }
+                    let off = bin.len();
+                    bin.extend_from_slice(png);
+                    out.views.push_str(&format!(
+                        r#",{{"buffer":0,"byteOffset":{off},"byteLength":{}}}"#,
+                        png.len()
+                    ));
+                    if !images.is_empty() {
+                        images.push(',');
+                        textures.push(',');
+                        materials.push(',');
+                    }
+                    images.push_str(&format!(r#"{{"bufferView":{view_n},"mimeType":"image/png"}}"#));
+                    let n = pictures.len();
+                    textures.push_str(&format!(r#"{{"sampler":0,"source":{n}}}"#));
+                    materials.push_str(&format!(
+                        r#"{{"pbrMetallicRoughness":{{"baseColorTexture":{{"index":{n}}},"metallicFactor":0,"roughnessFactor":1}},"doubleSided":true}}"#
+                    ));
+                    view_n += 1;
+                    pictures.push(png);
+                    n
+                });
+                material = format!(r#","material":{at}"#);
+            }
+            out.accessors.push_str(&format!(
+                r#",{{"bufferView":2,"byteOffset":{},"componentType":5123,"count":{},"type":"SCALAR"}}"#,
+                a * 2,
+                z - a
+            ));
+            prims.push(format!(
+                r#"{{"attributes":{{"POSITION":0,"TEXCOORD_0":1{{attr}}}},"indices":{acc_n}{material}}}"#
+            ));
+        }
+        out.primitives = prims.join(",");
+        if !materials.is_empty() {
+            out.materials = format!(
+                r#""materials":[{materials}],"textures":[{textures}],"images":[{images}],"samplers":[{{"magFilter":9729,"minFilter":9987,"wrapS":10497,"wrapT":10497}}],"#
+            );
+        }
+        out
     }
 
     /// Appends joints, weights and inverse bind matrices to `bin` and returns the JSON pieces for
@@ -663,6 +792,81 @@ mod tests {
             v.extend([0xffu8; 24]);
         }
         assert_eq!(guess_stride(&v, &[0, 1, 2, 5, 6, 7]).unwrap(), 36);
+    }
+
+    fn quad() -> Geometry {
+        let mut vb = Vec::new();
+        for p in [
+            [0.0f32, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 2.0, 1.0],
+            [1.0, 2.0, 1.0],
+        ] {
+            for c in p {
+                vb.extend(c.to_le_bytes());
+            }
+            vb.extend(0.5f32.to_le_bytes());
+            vb.extend(0.25f32.to_le_bytes());
+            vb.resize(vb.len() + 4, 0);
+        }
+        Geometry {
+            vertex_data: vb,
+            stride: 24,
+            indices: vec![0, 1, 2, 2, 1, 3],
+            tail_block: 0,
+            tail: Vec::new(),
+        }
+    }
+
+    fn glb_json(glb: &[u8]) -> String {
+        let jl = u32::from_le_bytes([glb[12], glb[13], glb[14], glb[15]]) as usize;
+        String::from_utf8(glb[20..20 + jl].to_vec()).expect("utf8")
+    }
+
+    #[test]
+    fn textured_parts_become_primitives_with_one_shared_picture() {
+        let png = vec![0x89, b'P', b'N', b'G', 1, 2, 3];
+        let part = |a, z, p: Option<&Vec<u8>>| MeshPart {
+            index_begin: a,
+            index_end: z,
+            png: p.cloned(),
+        };
+        let parts = [part(0, 3, Some(&png)), part(3, 6, Some(&png))];
+        let glb = quad().to_glb_textured(&parts, None).expect("glb");
+        let json = glb_json(&glb);
+        assert_eq!(json.matches(r#""indices":"#).count(), 2, "{json}");
+        assert_eq!(
+            json.matches(r#""mimeType":"image/png""#).count(),
+            1,
+            "{json}"
+        );
+        assert!(
+            json.contains(r#""byteOffset":6,"componentType":5123,"count":3"#),
+            "{json}"
+        );
+        assert_eq!(glb.len() % 4, 0);
+        let total = u32::from_le_bytes([glb[8], glb[9], glb[10], glb[11]]) as usize;
+        assert_eq!(total, glb.len());
+    }
+
+    #[test]
+    fn unusable_parts_fall_back_to_one_primitive() {
+        let bad = [
+            MeshPart {
+                index_begin: 4,
+                index_end: 99,
+                png: None,
+            },
+            MeshPart {
+                index_begin: 3,
+                index_end: 3,
+                png: None,
+            },
+        ];
+        let glb = quad().to_glb_textured(&bad, None).expect("glb");
+        let json = glb_json(&glb);
+        assert_eq!(json.matches(r#""indices":"#).count(), 1, "{json}");
+        assert!(!json.contains("materials"), "{json}");
     }
 
     #[test]

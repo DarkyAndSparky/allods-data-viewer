@@ -104,6 +104,10 @@ export class ModelViewer {
 
   setWireframe(on: boolean): void {
     this.material.wireframe = on;
+    this.animated?.traverse((o) => {
+      const mat = (o as ThreeMesh).material;
+      for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) (m as { wireframe?: boolean }).wireframe = on;
+    });
   }
 
   /** Many game formats are Z-up; turning the model by -90° about X makes it stand. */
@@ -115,13 +119,13 @@ export class ModelViewer {
    * Replaces the static mesh with a skinned model from a binary glTF file and plays its first
    * animation (looping unless `setLoop(false)` was called). Throws when the file cannot be read as glTF.
    */
-  async playGlb(buf: ArrayBuffer): Promise<void> {
+  async playGlb(buf: ArrayBuffer, keepMaterials = false): Promise<void> {
     const gltf = await new GLTFLoader().parseAsync(buf, "");
     this.stopAnimation();
     gltf.scene.traverse((o) => {
       const m = o as ThreeMesh;
       if (m.isMesh) {
-        m.material = this.material;
+        if (!keepMaterials) m.material = this.material;
         m.frustumCulled = false;
       }
     });

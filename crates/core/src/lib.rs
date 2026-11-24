@@ -9,6 +9,7 @@
 pub mod animation;
 pub mod archive;
 pub mod bev;
+pub mod binding;
 pub mod blob;
 pub mod browse;
 pub mod celt;
@@ -31,6 +32,7 @@ pub mod pak;
 pub mod picture;
 pub mod preview;
 pub mod skeleton;
+pub mod soundbind;
 pub mod svg;
 pub mod tdb;
 pub mod texheur;

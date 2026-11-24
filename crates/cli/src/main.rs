@@ -197,6 +197,14 @@ enum DbCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Show the sounds of characters (`CharacterSoundVariation`) and the sound projects (32-bit layout).
+    Sound {
+        /// Database file (zlib compressed or already inflated `.bin`, 32-bit layout).
+        file: PathBuf,
+        /// Only records whose name matches this pattern (`*` matches any characters).
+        #[arg(long)]
+        filter: Option<String>,
+    },
     /// List the named resources of a database with their database ids.
     List {
         /// Database file (zlib compressed `.bin`).
@@ -764,6 +772,44 @@ fn run(command: Command) -> Result<u8, String> {
             println!("Struct types ({}):", db.structs.len());
             for s in &db.structs {
                 println!("  {s}");
+            }
+            Ok(0)
+        }
+        Command::Db {
+            command: DbCommand::Sound { file, filter },
+        } => {
+            let limits = Limits::default();
+            let raw = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let payload = inflate_db(raw.as_slice(), &limits).unwrap_or(raw);
+            let err = |e: adv_core::Error| format!("{}: {e}", file.display());
+            let db = adv_core::db32::parse(&payload, &limits).map_err(err)?;
+            let fixes =
+                adv_core::fixes::parse_fixes(&payload, db.data.end, &limits).map_err(err)?;
+            let pick = |n: &str| filter.as_deref().is_none_or(|p| wildcard(p, n));
+            for (name, p) in adv_core::soundbind::all_projects(&db, &payload, &fixes, &limits)
+                .map_err(err)?
+                .iter()
+                .filter(|(n, _)| pick(n))
+            {
+                println!("{name}\n  events: {}", p.events_file);
+                for b in &p.banks {
+                    println!("  bank: {b}");
+                }
+            }
+            for (name, c) in adv_core::soundbind::all_characters(&db, &payload, &fixes, &limits)
+                .map_err(err)?
+                .iter()
+                .filter(|(n, _)| pick(n))
+            {
+                println!("{name}\n  project: {}", c.project.as_deref().unwrap_or("-"));
+                for e in &c.events {
+                    println!(
+                        "  {} [{}] {}",
+                        e.event,
+                        e.kind,
+                        e.project.as_deref().unwrap_or("-")
+                    );
+                }
             }
             Ok(0)
         }

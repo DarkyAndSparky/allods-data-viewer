@@ -615,6 +615,29 @@ pub fn mesh_glb_animated(data: &[u8], clip: &[u8], name: &str, limits: &Limits) 
     g.to_glb_animated(&clip, name)
 }
 
+/// Binary glTF of a geometry `.bin` split into textured parts, optionally with one clip
+/// (`clip` is the clip file and its name).
+///
+/// # Errors
+///
+/// Fails when the model or the clip is not consistent.
+pub fn mesh_glb_textured(
+    data: &[u8],
+    parts: &[crate::geometry::MeshPart],
+    clip: Option<(&[u8], &str)>,
+    limits: &Limits,
+) -> Result<Vec<u8>> {
+    let g = load_geometry(data, limits)?;
+    let decoded = match clip {
+        Some((bytes, name)) => {
+            let inflated = crate::geometry::inflate(bytes, limits)?;
+            Some((crate::animation::decode(&inflated)?, name))
+        }
+        None => None,
+    };
+    g.to_glb_textured(parts, decoded.as_ref().map(|(c, n)| (c, *n)))
+}
+
 /// Wavefront OBJ text of a geometry `.bin` (positions, UVs, triangles).
 ///
 /// # Errors

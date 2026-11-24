@@ -180,43 +180,29 @@ pub fn db_signature(data: &[u8]) -> Option<[u8; 12]> {
     (head[1..8] == [0x02, 0x2e, 0x59, 0x73, 0x04, 0x00, 0x00]).then_some(head)
 }
 
-/// Parses an inflated V2 x64 database.
-///
-/// # Errors
-///
-/// [`Error::Format`] for anything that does not follow the layout, [`Error::Limit`] for
-/// absurd counts.
-pub fn parse_db(d: &[u8], limits: &Limits) -> Result<Database> {
-    if d.len() < 12 + 12 {
-        return Err(Error::format("database too short"));
-    }
-    let mut version = [0u8; 12];
-    version.copy_from_slice(&d[..12]);
+/// True when every entry of the table is a `struct NDb::` name.
+fn structs_are_names(meta: &[u8], (at, n): (usize, usize)) -> bool {
+    (0..n).all(|i| {
+        let e = at + i * 16;
+        let (Some(rel), Some(size)) = (i32_at(meta, e).ok(), i32_at(meta, e + 4).ok()) else {
+            return false;
+        };
+        let (Ok(t), Ok(size)) = (target(e, rel), usize::try_from(size)) else {
+            return false;
+        };
+        t.checked_add(size)
+            .and_then(|end| meta.get(t..end))
+            .is_some_and(|b| b.starts_with(b"struct NDb::"))
+    })
+}
 
-    // Chunk 2: metadata.
-    if i32_at(d, 12)? != 2 {
-        return Err(Error::format(
-            "first chunk is not the metadata chunk (id 2)",
-        ));
-    }
-    let meta_size =
-        usize::try_from(i64_at(d, 16)?).map_err(|_| Error::format("bad metadata size"))?;
-    let blob = 24usize;
-    let blob_end = blob
-        .checked_add(meta_size)
-        .filter(|e| *e <= d.len())
-        .ok_or_else(|| Error::format("metadata chunk runs past end"))?;
-    let meta = &d[..blob_end];
-
-    let dir = |i: usize| -> Result<(usize, usize)> {
-        let field = blob + i * 8;
-        let rel = i32_at(meta, field)?;
-        let n = count(i32_at(meta, field + 4)?, "table", limits)?;
-        Ok((target(field, rel)?, n))
-    };
-    let (files_at, files_n) = dir(1)?;
-    let (structs_at, structs_n) = dir(2)?;
-
+/// Reads the struct names and the bucketed resource names from the two directory tables.
+fn read_tables(
+    meta: &[u8],
+    (files_at, files_n): (usize, usize),
+    (structs_at, structs_n): (usize, usize),
+    limits: &Limits,
+) -> Result<(Vec<String>, Vec<DbFile>)> {
     // Struct names.
     let mut structs = Vec::with_capacity(structs_n);
     for i in 0..structs_n {
@@ -285,6 +271,60 @@ pub fn parse_db(d: &[u8], limits: &Limits) -> Result<Database> {
             });
         }
     }
+    Ok((structs, files))
+}
+
+/// Parses an inflated V2 x64 database.
+///
+/// # Errors
+///
+/// [`Error::Format`] for anything that does not follow the layout, [`Error::Limit`] for
+/// absurd counts.
+pub fn parse_db(d: &[u8], limits: &Limits) -> Result<Database> {
+    if d.len() < 12 + 12 {
+        return Err(Error::format("database too short"));
+    }
+    let mut version = [0u8; 12];
+    version.copy_from_slice(&d[..12]);
+
+    // Chunk 2: metadata.
+    if i32_at(d, 12)? != 2 {
+        return Err(Error::format(
+            "first chunk is not the metadata chunk (id 2)",
+        ));
+    }
+    let meta_size =
+        usize::try_from(i64_at(d, 16)?).map_err(|_| Error::format("bad metadata size"))?;
+    let blob = 24usize;
+    let blob_end = blob
+        .checked_add(meta_size)
+        .filter(|e| *e <= d.len())
+        .ok_or_else(|| Error::format("metadata chunk runs past end"))?;
+    let meta = &d[..blob_end];
+
+    let dir = |i: usize| -> Result<(usize, usize)> {
+        let field = blob + i * 8;
+        let rel = i32_at(meta, field)?;
+        let n = count(i32_at(meta, field + 4)?, "table", limits)?;
+        Ok((target(field, rel)?, n))
+    };
+    // Builds up to 1139 keep the resource names in table 1 and the struct names in table 2.
+    // Build 1148 has the struct names in table 1 and no name table at all.
+    let (one, two) = (dir(1)?, dir(2)?);
+    let (structs, mut files) = match read_tables(meta, one, two, limits) {
+        Ok(t) => t,
+        Err(first) => match read_tables(meta, (0, 0), one, limits) {
+            // Only believed when every entry really is a struct name.
+            Ok(t)
+                if !t.0.is_empty()
+                    && t.0.iter().all(|n| !n.starts_with("struct "))
+                    && structs_are_names(meta, one) =>
+            {
+                t
+            }
+            _ => return Err(first),
+        },
+    };
     files.sort_by_key(|f| f.db_id);
 
     // Chunk 3: data image.
@@ -571,6 +611,20 @@ mod tests {
         assert_eq!(db.data.len(), 256);
         assert_eq!(db.fix_count, 2);
         assert!(db.packs.is_empty());
+    }
+
+    #[test]
+    fn build_1148_has_structs_in_table_one_and_no_names() {
+        let mut d = build(&[], &["Texture", "Geometry"], 32, &[(0, 0)]);
+        // Directory entries sit at 24 (chunk header 12 + 12 version bytes): move the struct
+        // table into slot 1 and leave slot 2 empty, as the 1148 client does.
+        let rel = i32::from_le_bytes(d[40..44].try_into().expect("4 bytes"));
+        d[32..36].copy_from_slice(&(rel + 8).to_le_bytes());
+        d[36..40].copy_from_slice(&2i32.to_le_bytes());
+        d[40..48].fill(0);
+        let db = parse_db(&d, &Limits::default()).expect("parse");
+        assert_eq!(db.structs, ["Texture", "Geometry"]);
+        assert!(db.files.is_empty());
     }
 
     #[test]

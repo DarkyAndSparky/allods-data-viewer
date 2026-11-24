@@ -5,6 +5,83 @@ Rule: every new build adds its section here before the archive is made (see [VER
 
 Entries for 0.1.14 to 0.1.44 were rebuilt from the delivery messages of the project chat (2026-11-19); where a message gave no detail the entry says so.
 
+## 0.1.81
+
+### Added
+- Folder view has a "List / Thumbnails" switch (remembered between runs). In the thumbnail view every texture and model gets a small picture: textures from the decoded image, models as a front-view still drawn by one shared offscreen renderer. Pictures load when a tile scrolls into view, two at a time; leaving the folder drops the queue and frees the pictures. Models above 3 000 000 indices and models where WebGL is unavailable show "No preview". Folders and other files show a symbol.
+- Interface texts `viewList`, `viewThumbs`, `thumbNone` in Russian and English. Web test for the job queue (limit and order, clearing).
+
+### Not verified
+- The look and speed of the tile view in the real window on Windows (large folders, models with many parts); the web build and tests pass, the desktop app was not compiled here.
+
+## 0.1.80
+
+### Added
+- `adv db sound <pack.bin> [--filter]`: lists the `FMODProject` records (event file and banks) and the `CharacterSoundVariation` records (default project and FMOD event paths with the stored number) of a 32-bit database. The file may be zlib compressed or already inflated.
+- Core module `soundbind` (`all_characters`, `all_projects`) with bounds-checked reads and 4 tests (success, missing fixes, truncated image and bad sizes, pointers outside the image).
+- `docs/formats/sound-binding.md`: layouts of `CharacterSoundVariation` and `FMODProject`, the link from `VisCharacterTemplate`, and who points at sound projects (draft).
+
+### Verified
+- On the `pack.bin` of client 1.1.00.41: 11 character records and 14 projects are read; the events of `ElfMale` use the `Voice` project and their names occur in `SFX/Voice/Voice.bev`.
+
+### Not verified
+- Creature sounds (played by effect records), the meaning of the stored number and of the second array, 7.0 and 18.0 databases, display in the window.
+
+## 0.1.79
+
+### Fixed
+- Kind lists (the filter row at the bottom of the side panel) showed only the first 1000 files with no way to see the rest. The list now holds up to 200 000 files and is shown in pages of 200 with Previous/Next buttons and a "from-to of total (page X of Y)" counter.
+- The resource database is also looked for in `Bin*.pak` and `System*.pak` (not Mini/HiRes), not only in `BaseLoc*.pak`, so "Apply textures" works for clients that keep `Bin/pack.bin` there. Test `base_pak_also_finds_bin_pak_and_skips_packs_without_a_database`.
+
+### Not verified
+- The paging in the real window on Windows; loading a list of tens of thousands of files was not timed.
+- That the maintainer's 7.0 client keeps its database in one of these paks.
+
+## 0.1.78
+
+### Fixed
+- "Apply textures" failed for unpacked 7.0 data: the model had to sit inside a pak and the database in a `BaseLoc*.pak` under the opened folder. Now a model is matched to the database by the longest tail of its path, so it can be a loose file or in any pak, and a loose `Bin/pack.bin` below the opened folder is used when there is no `BaseLoc*.pak`.
+- The error of the switch now names the cause: no database found (open the client folder), or the model is not in the database.
+
+### Not verified
+- On Windows in the real window. Checked on Linux with a folder of paks, a folder of loose files plus `Bin/pack.bin`, and a folder without the database (error text).
+
+## 0.1.77
+
+### Added
+- `binding::ElementBinding::params`: per-element `CommonMaterialParams` (bump, effect mask, environment reflection, environment specular texture names, shininess, specular intensity) read through the element's `params` pointer; test `element_params_are_read_through_their_pointers`.
+- Statistics of the 7.0 pack in `docs/formats/model-binding.md`.
+
+### Not verified
+- The new fields are not used by the viewer or the glTF export (no standard glTF slot for them).
+
+## 0.1.76
+
+### Fixed
+- `adv db info` and the database reader open the current 18.0 `pack.bin` (build 1148): the file-name table is absent there and the struct names sit in directory slot 1. The old order is tried first; the new one is accepted only when every entry is a `struct NDb::` name.
+
+### Added
+- Test `build_1148_has_structs_in_table_one_and_no_names`.
+
+### Not verified
+- Names of resources of 18.0 are still unknown, so models of 18.0 get no textures (the root names are expected in `System/index.bin`, not seen yet).
+
+## 0.1.75
+
+### Added
+- `adv-core::binding`: element ranges (LOD 0) and `diffuseTexture` of every Geometry record of a 7.0 `pack.bin`, read through the pointer-fix table.
+- `Geometry::to_glb_textured`, `preview::mesh_glb_textured`: glTF split into one primitive per element with a PNG base colour texture per material; the BIN chunk is padded to 4 bytes.
+- `Session::glb_textured` (textures are looked up next to the model, in the same archive), desktop command `get_textured_glb`.
+- Model view: "Apply textures" switch, works together with the animation clips; wireframe also applies to textured models.
+- `docs/formats/model-binding.md`.
+
+### Changed
+- Merged the maintainer's changes from GitHub `main` up to `ee395ee` (CELT bands, FSB4, texture reader, stale-answer guards in the web UI, cookie 0.18.3, url 2.5.9, README and format notes).
+
+### Not verified
+- `adv-desktop` (not compiled here), the switch in the real window on Windows.
+- Models of client 18.0 (no binding yet), effect textures from other folders.
+
 ## 0.1.74
 
 ### Added

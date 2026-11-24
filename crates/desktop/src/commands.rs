@@ -418,6 +418,9 @@ async fn complete_path(prefix: String) -> Result<Vec<String>, AppError> {
 }
 
 /// Lists files of one kind anywhere in the open data (at most 1000).
+/// Most files one kind list returns (the page shows them in pages).
+const KIND_LIST_LIMIT: usize = 200_000;
+
 #[tauri::command]
 async fn find_kind(state: State<'_, AppState>, kind: String) -> Result<Vec<String>, AppError> {
     let s = state.session()?;
@@ -425,7 +428,7 @@ async fn find_kind(state: State<'_, AppState>, kind: String) -> Result<Vec<Strin
         code: "failed",
         detail: format!("unknown kind {kind}"),
     })?;
-    blocking(move || s.find_kind(kind, 1000).map_err(AppError::from)).await
+    blocking(move || s.find_kind(kind, KIND_LIST_LIMIT).map_err(AppError::from)).await
 }
 
 /// Finds files by part of the name (at most 300 hits).
@@ -559,6 +562,22 @@ async fn get_animated_glb(
     Ok(Response::new(bytes))
 }
 
+/// A model with the textures of its elements (and optionally one clip) as a binary glTF file.
+#[tauri::command]
+async fn get_textured_glb(
+    state: State<'_, AppState>,
+    path: String,
+    clip: Option<String>,
+) -> Result<Response, AppError> {
+    let s = state.session()?;
+    let bytes = blocking(move || {
+        s.glb_textured(&path, clip.as_deref())
+            .map_err(AppError::from)
+    })
+    .await?;
+    Ok(Response::new(bytes))
+}
+
 /// One decoded sound stream as a WAV file.
 #[tauri::command]
 async fn get_audio(
@@ -679,6 +698,7 @@ pub fn run() {
             get_mesh,
             get_clips,
             get_animated_glb,
+            get_textured_glb,
             get_audio,
             video_open,
             video_frames,

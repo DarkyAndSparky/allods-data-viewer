@@ -8,13 +8,16 @@ import { h } from "./dom";
 import { formatBytes } from "./format";
 import { detectLang, t, tf, type Key, type Lang } from "./i18n";
 import { parseMesh } from "./mesh";
+import { JobQueue, ModelSnapshot } from "./thumbs";
 import { ModelViewer } from "./viewer";
 import { filterItems, sortItems, withKinds, type Show, type SortBy } from "./view";
 import { baseName, commonPrefix, isJunkName, isJunkPath, errorKey, formatDuration, joinPath } from "./paths";
 
 const SEARCH_LIMIT = 300;
 const TEXT_HIT_LIMIT = 300;
-const KIND_LIMIT = 1000;
+const KIND_LIMIT = 200_000;
+/** Files shown per page in a result list. */
+const HITS_PAGE = 200;
 const REPO_URL = "https://github.com/DarkyAndSparky/allods-data-viewer";
 const KIND_KEYS: Record<string, Key | undefined> = {
   text: "kindText",
@@ -74,6 +77,11 @@ export class App {
   private scope = "";
   private scopeOnly = false;
   private hideJunk = saved("hideJunk") === "1";
+  /** Folder view as a list or as tiles with small pictures. */
+  private folderMode: "list" | "thumbs" = saved("folderMode") === "thumbs" ? "thumbs" : "list";
+  private thumbQueue = new JobQueue(2);
+  private snapshot: ModelSnapshot | null = null;
+  private thumbObserver: IntersectionObserver | null = null;
   private scopeBox: HTMLInputElement | null = null;
   private scopeText: HTMLElement | null = null;
   private kinds = new Map<string, Kind>();
@@ -472,7 +480,7 @@ export class App {
     }
   }
 
-  /** Adds the clip list and the play button to the model toolbar when the model has clips. */
+  /** Adds the texture switch, the clip list and the play button to the model toolbar. */
   private async clipPicker(path: string, viewer: ModelViewer, bar: HTMLElement): Promise<void> {
     const api = this.api;
     if (!api) return;
@@ -482,44 +490,60 @@ export class App {
     } catch (e) {
       console.error(e);
     }
-    if (clips.length === 0 || this.viewer !== viewer) return;
-    const select = h("select", { attrs: { "aria-label": this.tr("animClip") } });
-    select.append(h("option", { text: this.tr("animNone"), attrs: { value: "" } }));
-    for (const c of clips) {
-      const name = (c.split("/").pop() ?? c).replace(/\.\(SkeletalAnimation\)\.bin$/i, "");
-      select.append(h("option", { text: name, attrs: { value: c } }));
-    }
-    const play = h("button", { class: "btn", text: this.tr("animPause"), attrs: { type: "button", disabled: "" } });
+    if (this.viewer !== viewer) return;
     const status = h("span", { class: "muted" });
+    const tex = h("input", { attrs: { type: "checkbox", id: "texApply" } });
+    const select = h("select", { attrs: { "aria-label": this.tr("animClip") } });
+    const play = h("button", { class: "btn", text: this.tr("animPause"), attrs: { type: "button", disabled: "" } });
     const loop = h("input", { attrs: { type: "checkbox", id: "animLoop", checked: "" } });
-    loop.addEventListener("change", () => viewer.setLoop(loop.checked));
     let paused = false;
-    select.addEventListener("change", async () => {
+    /** Shows the model the way the two switches ask: plain mesh, textured, animated, or both. */
+    const refresh = async (): Promise<void> => {
       paused = false;
       play.textContent = this.tr("animPause");
       status.textContent = "";
-      if (select.value === "") {
+      const clip = select.value === "" ? null : select.value;
+      if (!tex.checked && clip === null) {
         viewer.stopAnimation();
         play.setAttribute("disabled", "");
         return;
       }
-      status.textContent = this.tr("animLoading");
+      status.textContent = this.tr(tex.checked ? "texLoading" : "animLoading");
       try {
-        await viewer.playGlb(await api.animatedGlb(path, select.value));
-        play.removeAttribute("disabled");
+        const buf = tex.checked ? await api.texturedGlb(path, clip) : await api.animatedGlb(path, clip ?? "");
+        await viewer.playGlb(buf, tex.checked);
+        if (clip === null) play.setAttribute("disabled", "");
+        else play.removeAttribute("disabled");
         status.textContent = "";
       } catch (e) {
         viewer.stopAnimation();
         play.setAttribute("disabled", "");
-        status.textContent = tf(this.lang, "animFailed", { error: String(e) });
+        if (tex.checked) {
+          tex.checked = false;
+          status.textContent = tf(this.lang, "texFailed", { error: String(e) });
+        } else {
+          status.textContent = tf(this.lang, "animFailed", { error: String(e) });
+        }
       }
-    });
-    play.addEventListener("click", () => {
-      paused = !paused;
-      viewer.setPaused(paused);
-      play.textContent = this.tr(paused ? "animPlay" : "animPause");
-    });
-    bar.append(h("label", {}, this.tr("animClip") + ": ", select), play, h("label", {}, loop, this.tr("animLoop")), status);
+    };
+    tex.addEventListener("change", () => void refresh());
+    bar.append(h("label", {}, tex, this.tr("texApply")));
+    if (clips.length > 0) {
+      select.append(h("option", { text: this.tr("animNone"), attrs: { value: "" } }));
+      for (const c of clips) {
+        const name = (c.split("/").pop() ?? c).replace(/\.\(SkeletalAnimation\)\.bin$/i, "");
+        select.append(h("option", { text: name, attrs: { value: c } }));
+      }
+      loop.addEventListener("change", () => viewer.setLoop(loop.checked));
+      select.addEventListener("change", () => void refresh());
+      play.addEventListener("click", () => {
+        paused = !paused;
+        viewer.setPaused(paused);
+        play.textContent = this.tr(paused ? "animPlay" : "animPause");
+      });
+      bar.append(h("label", {}, this.tr("animClip") + ": ", select), play, h("label", {}, loop, this.tr("animLoop")));
+    }
+    bar.append(status);
   }
 
   /** Draggable divider between the file list and the viewer; a click folds the list away. */
@@ -656,7 +680,7 @@ export class App {
     this.error.hidden = false;
   }
 
-  /** Lists file paths as buttons in the results pane. */
+  /** Lists file paths as buttons in the results pane, one page at a time. */
   private showHits(hits: string[], limit: number, limitKey: Key): void {
     this.results.replaceChildren();
     if (hits.length === 0) this.results.append(h("p", { class: "muted", text: this.tr("noResults") }));
@@ -666,20 +690,52 @@ export class App {
     if (hits.length >= limit) {
       this.results.append(h("p", { class: "muted", text: tf(this.lang, limitKey, { count: limit }) }));
     }
-    for (const path of hits) {
-      const btn = h(
-        "button",
-        { class: "node file", attrs: { type: "button", title: path } },
-        h("span", { class: "name", text: baseName(path) }),
-        h("span", { class: "meta", text: path.slice(0, Math.max(0, path.length - baseName(path).length - 1)) }),
-      );
-      btn.addEventListener("click", () => {
-        this.results.querySelector(".node.selected")?.classList.remove("selected");
-        btn.classList.add("selected");
-        void this.select(path);
+    const pages = Math.max(1, Math.ceil(hits.length / HITS_PAGE));
+    let page = 0;
+    const list = h("div", { class: "hit-list" });
+    const info = h("span", { class: "muted" });
+    const prev = h("button", { attrs: { type: "button" }, text: this.tr("locPrev") });
+    const next = h("button", { attrs: { type: "button" }, text: this.tr("locNext") });
+    const bar = h("div", { class: "toolbar" }, prev, next, info);
+    const render = (): void => {
+      list.replaceChildren();
+      const from = page * HITS_PAGE;
+      for (const path of hits.slice(from, from + HITS_PAGE)) {
+        const btn = h(
+          "button",
+          { class: "node file", attrs: { type: "button", title: path } },
+          h("span", { class: "name", text: baseName(path) }),
+          h("span", { class: "meta", text: path.slice(0, Math.max(0, path.length - baseName(path).length - 1)) }),
+        );
+        btn.addEventListener("click", () => {
+          this.results.querySelector(".node.selected")?.classList.remove("selected");
+          btn.classList.add("selected");
+          void this.select(path);
+        });
+        list.append(btn);
+      }
+      info.textContent = tf(this.lang, "pageOf", {
+        from: hits.length === 0 ? 0 : from + 1,
+        to: Math.min(hits.length, from + HITS_PAGE),
+        total: hits.length,
+        page: page + 1,
+        pages,
       });
-      this.results.append(btn);
-    }
+      prev.disabled = page === 0;
+      next.disabled = page + 1 >= pages;
+      this.results.scrollTop = 0;
+    };
+    prev.addEventListener("click", () => {
+      page = Math.max(0, page - 1);
+      render();
+    });
+    next.addEventListener("click", () => {
+      page = Math.min(pages - 1, page + 1);
+      render();
+    });
+    if (pages > 1) this.results.append(bar);
+    this.results.append(list);
+    render();
   }
 
   /** Appends the matches found inside texts below the name matches. */
@@ -988,8 +1044,56 @@ export class App {
   }
 
   private revoke(): void {
+    this.thumbObserver?.disconnect();
+    this.thumbObserver = null;
+    this.thumbQueue.clear();
     for (const u of this.urls) URL.revokeObjectURL(u);
     this.urls = [];
+  }
+
+  /** Small picture of a texture or a model for the tile view; `null` when there is none. */
+  private async thumbnail(full: string, kind: Kind): Promise<string | null> {
+    if (!this.api) return null;
+    if (kind === "texture") return this.blobUrl(await this.api.image(full), "image/png");
+    if (kind === "model") {
+      this.snapshot ??= new ModelSnapshot();
+      const blob = await this.snapshot.render(await this.api.mesh(full));
+      if (!blob) return null;
+      const u = URL.createObjectURL(blob);
+      this.urls.push(u);
+      return u;
+    }
+    return null;
+  }
+
+  /** Fills the tile with its picture when the tile scrolls into view. */
+  private watchTile(tile: HTMLElement, box: HTMLElement, full: string, kind: Kind, path: string): void {
+    this.thumbObserver ??= new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          this.thumbObserver?.unobserve(e.target);
+          (e.target as HTMLElement & { load?: () => void }).load?.();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    (tile as HTMLElement & { load?: () => void }).load = () => {
+      void this.thumbQueue
+        .add(async () => {
+          if (this.folderView !== path) return null;
+          return this.thumbnail(full, kind);
+        })
+        .then((url) => {
+          if (this.folderView !== path) return;
+          if (url) box.replaceChildren(h("img", { attrs: { src: url, alt: "", loading: "lazy" } }));
+          else box.textContent = this.tr("thumbNone");
+        })
+        .catch(() => {
+          if (this.folderView === path) box.textContent = this.tr("thumbNone");
+        });
+    };
+    this.thumbObserver.observe(tile);
   }
 
   private blobUrl(data: ArrayBuffer, type: string): string {
@@ -1146,7 +1250,25 @@ export class App {
         up.addEventListener("click", () => void this.showFolder(path.split("/").slice(0, -1).join("/")));
         head.append(up);
       }
-      const list = h("ul", { class: "folder-list" });
+      const mode = (m: "list" | "thumbs", key: Key): void => {
+        const b = h("button", {
+          class: `chip${this.folderMode === m ? " active" : ""}`,
+          text: this.tr(key),
+          attrs: { type: "button", "aria-pressed": String(this.folderMode === m) },
+        });
+        b.addEventListener("click", () => {
+          if (this.folderMode === m) return;
+          this.folderMode = m;
+          save("folderMode", m);
+          void this.showFolder(path, false);
+        });
+        head.append(b);
+      };
+      mode("list", "viewList");
+      mode("thumbs", "viewThumbs");
+      const tiles = this.folderMode === "thumbs";
+      const pending: (() => void)[] = [];
+      const list = h("ul", { class: tiles ? "folder-grid" : "folder-list" });
       if (items.length === 0) list.append(h("li", { class: "muted", text: this.tr("emptyFolder") }));
       for (const item of items) {
         const full = joinPath(path, item.name);
@@ -1157,6 +1279,23 @@ export class App {
           : [kindKey ? this.tr(kindKey) : "", item.size !== null ? formatBytes(item.size, this.lang) : ""]
               .filter((x) => x !== "")
               .join(", ");
+        if (tiles) {
+          const box = h("span", { class: "thumb", text: item.is_dir ? "📁" : "" });
+          const tile = h(
+            "button",
+            { class: `tile ${item.is_dir ? "dir" : "file"}`, attrs: { type: "button", title: item.name } },
+            box,
+            h("span", { class: "name", text: item.name }),
+            h("span", { class: "meta", text: meta }),
+          );
+          tile.addEventListener("click", () => void (item.is_dir ? this.showFolder(full) : this.select(full)));
+          list.append(h("li", {}, tile));
+          if (!item.is_dir && (item.kind === "texture" || item.kind === "model")) {
+            box.append(h("span", { class: "spinner small", attrs: { role: "status" } }));
+            pending.push(() => this.watchTile(tile, box, full, item.kind, path));
+          }
+          continue;
+        }
         const b = h(
           "button",
           { class: `node ${item.is_dir ? "dir" : "file"}`, attrs: { type: "button", title: item.name } },
@@ -1168,6 +1307,7 @@ export class App {
         list.append(h("li", {}, b));
       }
       this.view.replaceChildren(this.crumbs(path, true), head, list);
+      for (const watch of pending) watch();
     } catch (e) {
       if (this.folderView === path) {
         this.view.replaceChildren();
