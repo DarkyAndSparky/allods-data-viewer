@@ -160,7 +160,8 @@ export function makeApi(invoke: Invoke) {
     mesh: (path: string) => invoke<ArrayBuffer>("get_mesh", { path }),
     clips: (path: string) => invoke<string[]>("get_clips", { path }),
     animatedGlb: (path: string, clip: string) => invoke<ArrayBuffer>("get_animated_glb", { path, clip }),
-    texturedGlb: (path: string, clip: string | null) => invoke<ArrayBuffer>("get_textured_glb", { path, clip }),
+    texturedGlb: (path: string, clip: string | null, texture: string | null) =>
+      invoke<ArrayBuffer>("get_textured_glb", { path, clip, texture }),
     audio: (path: string, index: number) => invoke<ArrayBuffer>("get_audio", { path, index }),
     videoOpen: (path: string) => invoke<VideoInfo>("video_open", { path }),
     videoAudio: (path: string) => invoke<ArrayBuffer>("video_audio", { path }),

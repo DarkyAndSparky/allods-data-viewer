@@ -12,6 +12,7 @@ Nothing here is guessed: an empty or `unknown` cell means nobody has tested it.
 | Generation | Where it comes from | Pack database layout |
 |---|---|---|
 | 7.0 | Cloud Pirates 1.5 / 1.7, `Bin/pack.bin` | 32-bit (`Bits32`), file names present |
+| 1.1.00.41 | client 1.1, `Bin.pak` holds `Bin/pack.bin` | 32-bit, same container as 7.0; texture records and sound records read, model elements not |
 | 1.1.02.0 | older clients (the Python exporter targets it) | not read by this project yet |
 | 11.0.12 | Steam depot, `BaseLoceng_eu.pak` | unknown |
 | 15.0 | x64 database | 64-bit (`V2`), see `docs/formats/bin-db.md` |

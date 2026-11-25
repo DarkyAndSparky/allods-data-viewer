@@ -568,10 +568,11 @@ async fn get_textured_glb(
     state: State<'_, AppState>,
     path: String,
     clip: Option<String>,
+    texture: Option<String>,
 ) -> Result<Response, AppError> {
     let s = state.session()?;
     let bytes = blocking(move || {
-        s.glb_textured(&path, clip.as_deref())
+        s.glb_textured(&path, clip.as_deref(), texture.as_deref())
             .map_err(AppError::from)
     })
     .await?;

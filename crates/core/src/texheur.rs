@@ -8,7 +8,7 @@
 //! written from the described behaviour, not copied. A guess can be wrong: a picture
 //! 256x1024 has the same byte size as 512x512 and 1024x256.
 
-use crate::texture::{Dxt, Level};
+use crate::texture::{Dxt, Level, decode_dxt, level_dims};
 
 /// `(width, height)` pair.
 pub type Size = (u32, u32);
@@ -114,7 +114,9 @@ pub fn sizes_for_pixels(px: u64) -> Vec<Size> {
 pub fn default_index(list: &[Size], mip_slots: usize) -> usize {
     if mip_slots > 1 {
         let want = 1u64 << (mip_slots + 1).min(40);
-        if let Some(i) = list.iter().position(|&(w, h)| u64::from(w.min(h)) == want) {
+        // Wide pictures are far more common than tall ones (about 78 % in client 1.1), and the
+        // list is sorted by width: take the last candidate with that short side.
+        if let Some(i) = list.iter().rposition(|&(w, h)| u64::from(w.min(h)) == want) {
             return i;
         }
     }
@@ -154,12 +156,95 @@ pub fn guess(levels: &[Level], format: Option<Dxt>) -> Option<Guess> {
         return None;
     }
     let slots = levels.iter().map(|l| l.id.max(0) as usize + 1).max()?;
-    let index = default_index(&candidates, slots);
+    let index = pick_by_content(
+        levels,
+        format,
+        &candidates,
+        default_index(&candidates, slots),
+    );
     Some(Guess {
         format,
         candidates,
         index,
     })
+}
+
+/// Roughness across the edges of the 4x4 blocks: the mean luminance step between pixels that
+/// face each other over a block edge, horizontal edges and vertical edges averaged separately and
+/// added. A picture decoded with the wrong width glues unrelated blocks together, so its edges
+/// jump; a correct one is as smooth over an edge as inside a block. `None` when the picture has
+/// fewer than two blocks in either direction (nothing to compare).
+fn roughness(rgba: &[u8], w: usize, h: usize) -> Option<f64> {
+    if w < 8 || h < 8 {
+        return None;
+    }
+    let lum = |i: usize| -> i32 {
+        let p = i * 4;
+        let c = |o: usize| i32::from(rgba.get(p + o).copied().unwrap_or(0));
+        (c(0) * 3 + c(1) * 6 + c(2)) / 10
+    };
+    let (mut sx, mut nx, mut sy, mut ny) = (0u64, 0u64, 0u64, 0u64);
+    for y in 0..h {
+        for x in (3..w - 1).step_by(4) {
+            sx += u64::from((lum(y * w + x) - lum(y * w + x + 1)).unsigned_abs());
+            nx += 1;
+        }
+    }
+    for y in (3..h - 1).step_by(4) {
+        for x in 0..w {
+            sy += u64::from((lum(y * w + x) - lum((y + 1) * w + x)).unsigned_abs());
+            ny += 1;
+        }
+    }
+    (nx > 0 && ny > 0).then(|| sx as f64 / nx as f64 + sy as f64 / ny as f64)
+}
+
+/// Picks among equally sized candidates by decoding a mid-sized mip level with each and keeping
+/// the smoothest picture. Returns `current` unless another candidate is clearly smoother (the
+/// score must drop by 15 %), so noisy or flat textures keep the size-based default.
+#[must_use]
+pub fn pick_by_content(
+    levels: &[Level],
+    format: Dxt,
+    candidates: &[Size],
+    current: usize,
+) -> usize {
+    // The smallest level with at least 256 blocks, otherwise the largest level.
+    let level = levels
+        .iter()
+        .filter(|l| l.data.len() / format.block_bytes() >= 256)
+        .min_by_key(|l| l.data.len())
+        .or_else(|| levels.iter().min_by_key(|l| l.id));
+    let Some(level) = level else { return current };
+    let score = |&(w, h): &Size| -> Option<f64> {
+        let (lw, lh) = level_dims(w, h, level.id);
+        if format.level_size(lw, lh) != level.data.len() as u64
+            || u64::from(lw) * u64::from(lh) > 4_000_000
+        {
+            return None;
+        }
+        let rgba = decode_dxt(&level.data, lw, lh, format).ok()?;
+        roughness(&rgba, lw as usize, lh as usize)
+    };
+    let Some(base) = candidates.get(current).and_then(score) else {
+        return current;
+    };
+    let mut best = (current, base);
+    for (i, c) in candidates.iter().enumerate() {
+        if candidates.get(current) == Some(c) {
+            continue;
+        }
+        if let Some(sc) = score(c)
+            && sc < best.1
+        {
+            best = (i, sc);
+        }
+    }
+    if best.1 < base * 0.85 {
+        best.0
+    } else {
+        current
+    }
 }
 
 /// Counts fully transparent columns on the right and rows at the bottom of an RGBA picture.
@@ -228,6 +313,44 @@ mod tests {
         let mut p = vec![0u8; 4 * 4 * 4];
         p[3] = 255; // pixel (0,0)
         assert_eq!(detect_padding(&p, 4, 4), (3, 3));
+    }
+
+    /// A horizontal gradient of solid-colour DXT1 blocks: `bw` x `bh` blocks, level 0 only.
+    fn gradient(bw: usize, bh: usize) -> Level {
+        let mut data = Vec::new();
+        for _ in 0..bh {
+            for x in 0..bw {
+                let c = ((x * 31 / (bw - 1)) as u16) << 11 | 15 << 5; // red ramp
+                data.extend_from_slice(&c.to_le_bytes());
+                data.extend_from_slice(&c.to_le_bytes());
+                data.extend_from_slice(&[0, 0, 0, 0]);
+            }
+        }
+        Level { id: 0, data }
+    }
+
+    #[test]
+    fn content_picks_the_orientation_without_row_shifts() {
+        // 256x64 pixels (64 x 16 blocks): the same bytes also fit 64x256 and 128x128.
+        let level = gradient(64, 16);
+        let g = guess(std::slice::from_ref(&level), Some(Dxt::Dxt1)).unwrap();
+        assert_eq!(g.size(), (256, 64));
+        // Forcing a wrong starting index still ends on the smooth reading.
+        let c = candidate_sizes(level.data.len(), 0, Dxt::Dxt1);
+        let wrong = c.iter().position(|&s| s == (64, 256)).unwrap();
+        let i = pick_by_content(std::slice::from_ref(&level), Dxt::Dxt1, &c, wrong);
+        assert_eq!(c[i], (256, 64));
+    }
+
+    #[test]
+    fn flat_data_keeps_the_default() {
+        let level = Level {
+            id: 0,
+            data: vec![0u8; 64 * 16 * 8],
+        };
+        let c = candidate_sizes(level.data.len(), 0, Dxt::Dxt1);
+        let i = pick_by_content(std::slice::from_ref(&level), Dxt::Dxt1, &c, 1);
+        assert_eq!(i, 1);
     }
 
     #[test]

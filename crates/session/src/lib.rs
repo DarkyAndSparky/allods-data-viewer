@@ -947,7 +947,7 @@ impl Session {
                         Ok(o.pak
                             .entries()
                             .iter()
-                            .any(|e| e.path.as_str().to_ascii_lowercase().starts_with("bin/")))
+                            .any(|e| e.path.as_str().eq_ignore_ascii_case("bin/pack.bin")))
                     })
                     .unwrap_or(false)
                 })
@@ -1270,31 +1270,65 @@ impl Session {
     ///
     /// Fails when the pack has no binding for the model (only 7.0 packs are supported), or a
     /// file cannot be read or is not consistent.
-    pub fn glb_textured(&self, vpath: &str, clip: Option<&str>) -> Result<Vec<u8>, SessionError> {
+    pub fn glb_textured(
+        &self,
+        vpath: &str,
+        clip: Option<&str>,
+        texture: Option<&str>,
+    ) -> Result<Vec<u8>, SessionError> {
         let data = self.read(vpath)?;
-        let (elements, prefix) = self.bindings_of(vpath)?;
-        let prefix = prefix.as_str();
         let mut cache: HashMap<String, Option<Vec<u8>>> = HashMap::new();
         let mut parts = Vec::new();
-        for e in &elements {
-            let png = e.diffuse.as_deref().and_then(|name| {
-                cache
-                    .entry(name.to_owned())
-                    .or_insert_with(|| {
-                        let stem = name.strip_suffix(".(texture).xdb")?;
-                        let path = format!("{prefix}{stem}.(Texture).bin");
-                        match self.preview(&path, Options::default()).ok()? {
-                            Preview::Image { png, .. } if png.len() <= MAX_TEXTURE_PNG => Some(png),
-                            _ => None,
-                        }
-                    })
-                    .clone()
-            });
-            parts.push(adv_core::geometry::MeshPart {
-                index_begin: e.index_begin,
-                index_end: e.index_end,
-                png,
-            });
+        if let Some(tex) = texture {
+            // A texture chosen by hand covers every element; the element ranges come from the
+            // database when it knows the model, otherwise the whole mesh is one part.
+            let png = match self.preview(tex, Options::default())? {
+                Preview::Image { png, .. } if png.len() <= MAX_TEXTURE_PNG => png,
+                _ => {
+                    return Err(SessionError::Failed(format!(
+                        "{tex}: not a texture picture"
+                    )));
+                }
+            };
+            let ranges: Vec<(u32, u32)> = match self.bindings_of(vpath) {
+                Ok((elements, _)) => elements
+                    .iter()
+                    .map(|e| (e.index_begin, e.index_end))
+                    .collect(),
+                Err(_) => vec![(0, u32::MAX)],
+            };
+            for (a, z) in ranges {
+                parts.push(adv_core::geometry::MeshPart {
+                    index_begin: a,
+                    index_end: z,
+                    png: Some(png.clone()),
+                });
+            }
+        } else {
+            let (elements, prefix) = self.bindings_of(vpath)?;
+            let prefix = prefix.as_str();
+            for e in &elements {
+                let png = e.diffuse.as_deref().and_then(|name| {
+                    cache
+                        .entry(name.to_owned())
+                        .or_insert_with(|| {
+                            let stem = name.strip_suffix(".(texture).xdb")?;
+                            let path = format!("{prefix}{stem}.(Texture).bin");
+                            match self.preview(&path, Options::default()).ok()? {
+                                Preview::Image { png, .. } if png.len() <= MAX_TEXTURE_PNG => {
+                                    Some(png)
+                                }
+                                _ => None,
+                            }
+                        })
+                        .clone()
+                });
+                parts.push(adv_core::geometry::MeshPart {
+                    index_begin: e.index_begin,
+                    index_end: e.index_end,
+                    png,
+                });
+            }
         }
         let clip_data = match clip {
             Some(c) => Some((self.read(c)?, c.rsplit('/').next().unwrap_or(c).to_owned())),
@@ -2089,10 +2123,13 @@ mod tests {
         std::fs::write(dir.path().join("Hero.(Geometry).bin"), b"x").expect("write");
         let s = Session::open(dir.path()).expect("open");
         assert!(matches!(
-            s.glb_textured("Hero.(Geometry).bin", None),
+            s.glb_textured("Hero.(Geometry).bin", None, None),
             Err(SessionError::NotFound(_))
         ));
-        assert!(s.glb_textured("Missing.(Geometry).bin", None).is_err());
+        assert!(
+            s.glb_textured("Missing.(Geometry).bin", None, None)
+                .is_err()
+        );
     }
 
     #[test]
@@ -2173,6 +2210,23 @@ mod tests {
         assert_eq!(
             s.base_pak().expect("found").file_name().expect("name"),
             "BaseLoceng.pak"
+        );
+    }
+
+    #[test]
+    fn base_pak_needs_the_database_file_itself_not_just_a_bin_folder() {
+        let dir = tempfile::tempdir().expect("tmp");
+        std::fs::create_dir(dir.path().join("Packs")).expect("mkdir");
+        // A localisation pack with other files in Bin/ is not the database.
+        pak(
+            &dir.path().join("Packs/BaseLoceng.pak"),
+            &[("Bin/other.txt", b"x")],
+        );
+        pak(&dir.path().join("Packs/Bin.pak"), &[("Bin/pack.bin", b"x")]);
+        let s = Session::open(dir.path()).expect("open");
+        assert_eq!(
+            s.base_pak().expect("found").file_name().expect("name"),
+            "Bin.pak"
         );
     }
 

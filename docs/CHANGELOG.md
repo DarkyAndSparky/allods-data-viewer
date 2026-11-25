@@ -5,6 +5,21 @@ Rule: every new build adds its section here before the archive is made (see [VER
 
 Entries for 0.1.14 to 0.1.44 were rebuilt from the delivery messages of the project chat (2026-11-19); where a message gave no detail the entry says so.
 
+## 0.1.82
+
+### Fixed
+- Texture size guess (no database): a wide picture is preferred over a tall one with the same short side, and equal-size candidates are decoded and scored by the luminance step across 4x4 block edges. On 14 108 textures of client 1.1 the size is right in 98 % of cases (30 % before).
+- Database pak choice: the pak is taken only when it holds `Bin/pack.bin` itself (a localisation pak with other files in `Bin/` was picked first and hid the database).
+- Model textures: parts without a picture get the plain model colour instead of the glTF default white.
+- Client 1.1 `Texture` record (width +52, height +56, mips +60, type +32) is read; the 7.0 layout is still tried first.
+
+### Added
+- "Texture" list next to "Apply textures": textures from the model folder and the sibling `Textures` folder (up to 300). A chosen texture covers every element; without a database entry the whole mesh gets it. Interface texts `texPick`, `texAuto` in Russian and English.
+- Tests: 1.1 texture layout (and a rejected implausible mip count), orientation by content, flat data keeps the default, plain colour for untextured parts, database pak needs `Bin/pack.bin`.
+
+### Not verified
+- The texture list and the white-model fix in the real window on Windows; the cause of "texture not found" on the maintainer's 7.0 client (his exact error text is not known). Model elements of client 1.1 are not bound (record layout differs).
+
 ## 0.1.81
 
 ### Added

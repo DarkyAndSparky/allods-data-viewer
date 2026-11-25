@@ -462,6 +462,8 @@ impl Geometry {
                     usize::try_from(p.index_begin).ok()?,
                     usize::try_from(p.index_end).ok()?,
                 );
+                // `u32::MAX` as the end means "to the end of the mesh".
+                let z = if p.index_end == u32::MAX { total } else { z };
                 (a < z && z <= total).then_some((a, z, p))
             })
             .collect();
@@ -479,10 +481,11 @@ impl Geometry {
         let (mut materials, mut textures, mut images) =
             (String::new(), String::new(), String::new());
         let mut prims = Vec::new();
+        let mut plain = false;
         let first_acc = acc_n;
         for (k, (a, z, p)) in usable.into_iter().enumerate() {
             let acc_n = first_acc + k;
-            let mut material = String::new();
+            let material;
             if let Some(png) = p.png.as_deref() {
                 let at = pictures.iter().position(|x| *x == png).unwrap_or_else(|| {
                     while !bin.len().is_multiple_of(4) {
@@ -510,6 +513,10 @@ impl Geometry {
                     n
                 });
                 material = format!(r#","material":{at}"#);
+            } else {
+                // No picture for this part: the plain model colour, not the glTF default white.
+                plain = true;
+                material = r#","material":{plain}"#.to_owned();
             }
             out.accessors.push_str(&format!(
                 r#",{{"bufferView":2,"byteOffset":{},"componentType":5123,"count":{},"type":"SCALAR"}}"#,
@@ -520,11 +527,25 @@ impl Geometry {
                 r#"{{"attributes":{{"POSITION":0,"TEXCOORD_0":1{{attr}}}},"indices":{acc_n}{material}}}"#
             ));
         }
-        out.primitives = prims.join(",");
-        if !materials.is_empty() {
-            out.materials = format!(
-                r#""materials":[{materials}],"textures":[{textures}],"images":[{images}],"samplers":[{{"magFilter":9729,"minFilter":9987,"wrapS":10497,"wrapT":10497}}],"#
+        out.primitives = prims
+            .join(",")
+            .replace("{plain}", &pictures.len().to_string());
+        if plain {
+            if !materials.is_empty() {
+                materials.push(',');
+            }
+            materials.push_str(
+                r#"{"pbrMetallicRoughness":{"baseColorFactor":[0.79,0.725,0.56,1],"metallicFactor":0.05,"roughnessFactor":0.8},"doubleSided":true}"#,
             );
+        }
+        if !materials.is_empty() {
+            out.materials = if pictures.is_empty() {
+                format!(r#""materials":[{materials}],"#)
+            } else {
+                format!(
+                    r#""materials":[{materials}],"textures":[{textures}],"images":[{images}],"samplers":[{{"magFilter":9729,"minFilter":9987,"wrapS":10497,"wrapT":10497}}],"#
+                )
+            };
         }
         out
     }
@@ -847,6 +868,40 @@ mod tests {
         assert_eq!(glb.len() % 4, 0);
         let total = u32::from_le_bytes([glb[8], glb[9], glb[10], glb[11]]) as usize;
         assert_eq!(total, glb.len());
+    }
+
+    #[test]
+    fn a_part_without_picture_gets_the_plain_colour_not_white() {
+        let png = vec![0x89, b'P', b'N', b'G', 1, 2, 3];
+        let parts = [
+            MeshPart {
+                index_begin: 0,
+                index_end: 3,
+                png: Some(png),
+            },
+            MeshPart {
+                index_begin: 3,
+                index_end: 6,
+                png: None,
+            },
+        ];
+        let json = glb_json(&quad().to_glb_textured(&parts, None).expect("glb"));
+        assert!(
+            json.contains(r#""material":0"#) && json.contains(r#""material":1"#),
+            "{json}"
+        );
+        assert!(json.contains("baseColorFactor"), "{json}");
+        // Only untextured parts: a material list without textures and images.
+        let none = [MeshPart {
+            index_begin: 0,
+            index_end: 3,
+            png: None,
+        }];
+        let json = glb_json(&quad().to_glb_textured(&none, None).expect("glb"));
+        assert!(
+            json.contains("baseColorFactor") && !json.contains(r#""images""#),
+            "{json}"
+        );
     }
 
     #[test]

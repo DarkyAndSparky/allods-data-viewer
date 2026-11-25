@@ -182,3 +182,16 @@ Found in the server tree (`Allods_Server/server/game/data/System`, 21.2 MB; next
 ## 18.0 build 1148 (checked 2026-11-24)
 
 `pack.bin` of the client 18.0 (78 MB zlib stream, 723 MB inflated, version buffer `A9DD6B8B 7C04 0000 851028A6`, 1 507 struct names, 313 referenced paks, 8.18 million fixes): directory slot 1 is the struct table, slot 2 is a 65 521-bucket table of 16-byte records `(rel, 0, id)` that is not a name table (records carry ids such as 740059695), slot 3 holds another 65 521-bucket id table, slot 4 is empty. There are no resource names. `adv-core::db` reads this layout (names empty). Status: **verified** for the framing, **unknown** for the meaning of slots 2 and 3.
+
+## Client 1.1.00.41: `Texture` object (2026-11-24)
+
+`Bin/pack.bin` of client 1.1.00.41 (`Bin.pak`) is the same 32-bit container as 7.0 (14 108 textures
+with a `.bin` in the extracted packs), but the `Texture` object has another field order. Offsets from
+the object start, `u32`: +32 `TextureElementType` (0 DXT1, 1 DXT3, 2 DXT5, 3 RGBA, 4 L8), +52 width,
++56 height, +60 mips number, +64 `0xFFFFFFFF`, +88 alpha flag. The 7.0 layout (width at +60) is tried
+first and a layout is accepted only when its fields are plausible (power-of-two size up to 16384, mips
+not above `log2(longest side) + 1`, type 0..4); otherwise this one is read. Status: **verified** for
+size and mips on 14 108 textures (the sizes decode the pictures correctly, checked by eye on
+`HarpyWings_Red` 512x256 and `ElfFemaleFaceLower00` 256x128); **draft** for type (+32) and alpha (+88).
+The model element layout of 7.0 (`docs/formats/model-binding.md`) does not read 1.1 geometry: all 2 726
+models of the extracted packs report "not in the resource database".

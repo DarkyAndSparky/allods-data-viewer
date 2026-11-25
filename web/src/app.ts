@@ -493,6 +493,8 @@ export class App {
     if (this.viewer !== viewer) return;
     const status = h("span", { class: "muted" });
     const tex = h("input", { attrs: { type: "checkbox", id: "texApply" } });
+    const texSelect = h("select", { attrs: { "aria-label": this.tr("texPick") } });
+    texSelect.append(h("option", { text: this.tr("texAuto"), attrs: { value: "" } }));
     const select = h("select", { attrs: { "aria-label": this.tr("animClip") } });
     const play = h("button", { class: "btn", text: this.tr("animPause"), attrs: { type: "button", disabled: "" } });
     const loop = h("input", { attrs: { type: "checkbox", id: "animLoop", checked: "" } });
@@ -510,7 +512,7 @@ export class App {
       }
       status.textContent = this.tr(tex.checked ? "texLoading" : "animLoading");
       try {
-        const buf = tex.checked ? await api.texturedGlb(path, clip) : await api.animatedGlb(path, clip ?? "");
+        const buf = tex.checked ? await api.texturedGlb(path, clip, texSelect.value === "" ? null : texSelect.value) : await api.animatedGlb(path, clip ?? "");
         await viewer.playGlb(buf, tex.checked);
         if (clip === null) play.setAttribute("disabled", "");
         else play.removeAttribute("disabled");
@@ -527,7 +529,20 @@ export class App {
       }
     };
     tex.addEventListener("change", () => void refresh());
+    texSelect.addEventListener("change", () => {
+      if (!tex.checked) tex.checked = true;
+      void refresh();
+    });
     bar.append(h("label", {}, tex, this.tr("texApply")));
+    // Textures lying next to the model (and in a sibling "Textures" folder): other skins of the
+    // same model, or textures the database does not bind.
+    void this.siblingTextures(path).then((found) => {
+      if (this.viewer !== viewer || found.length === 0) return;
+      for (const t of found) {
+        texSelect.append(h("option", { text: t.split("/").pop()?.replace(/\.\(Texture\)\.bin$/i, "") ?? t, attrs: { value: t } }));
+      }
+      bar.insertBefore(h("label", {}, this.tr("texPick") + ": ", texSelect), status);
+    });
     if (clips.length > 0) {
       select.append(h("option", { text: this.tr("animNone"), attrs: { value: "" } }));
       for (const c of clips) {
@@ -544,6 +559,26 @@ export class App {
       bar.append(h("label", {}, this.tr("animClip") + ": ", select), play, h("label", {}, loop, this.tr("animLoop")));
     }
     bar.append(status);
+  }
+
+  /** Texture files in the folder of a model and in its sibling `Textures` folder, at most 300. */
+  private async siblingTextures(modelPath: string): Promise<string[]> {
+    const api = this.api;
+    if (!api) return [];
+    const dir = modelPath.slice(0, modelPath.lastIndexOf("/"));
+    const parent = dir.slice(0, dir.lastIndexOf("/"));
+    const out: string[] = [];
+    for (const d of [dir, `${dir}/Textures`, parent === "" ? "" : `${parent}/Textures`]) {
+      if (d === "" || out.length >= 300) continue;
+      try {
+        for (const it of await api.listDir(d)) {
+          if (it.kind === "texture" && !/\.hi\.bin$/i.test(it.name) && out.length < 300) out.push(`${d}/${it.name}`);
+        }
+      } catch {
+        // the folder does not exist: nothing to add
+      }
+    }
+    return out;
   }
 
   /** Draggable divider between the file list and the viewer; a click folds the list away. */

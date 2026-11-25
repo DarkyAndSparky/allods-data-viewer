@@ -1,7 +1,7 @@
 {
   "name": "allods-data-viewer-web",
   "private": true,
-  "version": "0.1.81",
+  "version": "0.1.82",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -12,19 +12,19 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@tauri-apps/api": "^2.12.4",
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/three": "^0.187.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   },
   "engines": {
     "node": ">=26"
   },
   "dependencies": {
     "@tauri-apps/plugin-dialog": "^2.8.4",
-    "i18next": "^27.1.1",
+    "i18next": "^27.2.3",
     "three": "^0.187.0"
   }
 }

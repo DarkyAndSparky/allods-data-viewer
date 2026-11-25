@@ -43,3 +43,29 @@
 `u16 padW`, `u16 padH`. TDB1 (`"TDB "`) без отступов. Раньше «7 неизвестных байт»
 в [texture-list-tdb2.md](texture-list-tdb2.md): это именно эти поля. Индекс имеет смысл только вместе
 с данными текстуры, потому что список кандидатов строится из размера файла.
+
+## Orientation by content and wide-first tie-break (0.1.82)
+
+Status: **verified** on the 14 108 textures of client 1.1.00.41 that have a record in `Bin/pack.bin`
+(Characters, Items, Creatures, Ships, Spells, World races). The database size was taken as truth and
+compared with the guess made from the `.bin` alone.
+
+| Guess | Size right | Format right |
+|---|---|---|
+| Before 0.1.82 (first candidate with the mip-count short side) | 4 213 (30 %) | about 99.5 % |
+| 0.1.82 | 13 824 (98 %) | about 99.5 % |
+
+What changed:
+
+1. The mip count of a texture fixes only the short side (`2^(mips+1)`), so a wide and a tall picture
+   with the same short side are equally likely by size. The wide one is chosen by default: 11 122 of
+   the 14 299 non-square textures in the database are wider than tall.
+2. Equal-size candidates are then decoded at a mid-sized mip level (the smallest level with at least
+   256 blocks) and scored by the luminance step across the edges of the 4x4 blocks, horizontal and
+   vertical edges averaged separately. A picture decoded with the wrong width glues unrelated blocks
+   together. Another candidate replaces the default only when its score is at least 15 % lower.
+   Candidates with fewer than two blocks in a direction are not scored.
+
+Left wrong (284 of 14 108): thin hair and glove textures (256x64, 256x32, 256x16) with noisy content,
+`mips = 1` textures of 256x4, and about 60 textures whose format (DXT5 against DXT1) is not told apart
+by the alpha block patterns. The resource database stays the reliable source when it is available.

@@ -109,4 +109,5 @@ Note: replacing files inside a game client can break the game updater or its ter
 
 - [ ] Sounds of an object in the window (0.1.80 has `adv db sound`): list events of a character with play buttons from the `.bsb` banks; creature sounds come from effect records (see `docs/formats/sound-binding.md`).
 - [x] Thumbnails of textures and models in the folder view (0.1.81, static). Next: live model on hover/click with the Idle clip.
+- [ ] Client 1.1 model elements: the Geometry record layout differs from 7.0 (see `docs/formats/bin-db.md`), needed to bind textures there.
 - [ ] Object card (idea, 2026-11-23): one view per object with geometry, animations, a "apply textures" button and linked sounds, thumbnails for objects. Needs the geometry-to-texture link (see `docs/formats/geometry-bin.md`, material references are not decoded).

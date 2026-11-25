@@ -205,9 +205,11 @@ impl Database32 {
 
     /// Reads the `Texture` object at `db_id`; `None` if it does not fit in the data image.
     ///
-    /// Two object layouts exist. Cloud Pirates 1.5 uses 100 bytes with width at +60;
-    /// client 10.0 has one more word before it (104 bytes, width at +64). The layout is
-    /// told apart by the `0xFFFF_FFFF` word that follows the width.
+    /// Three object layouts exist. Cloud Pirates 1.5 (7.0) uses 100 bytes with width at +60;
+    /// client 10.0 has one more word before it (104 bytes, width at +64). Those two are told apart
+    /// by the `0xFFFF_FFFF` word that follows the width. Client 1.1 keeps width and height side by
+    /// side at +52 and +56, the mip count at +60 and the element type at +32. A layout is accepted
+    /// only when its fields are plausible (power-of-two size, a mip count that fits, known type).
     #[must_use]
     pub fn texture(&self, payload: &[u8], db_id: u64) -> Option<Texture32> {
         let base = self.data.start.checked_add(usize::try_from(db_id).ok()?)?;
@@ -217,19 +219,45 @@ impl Database32 {
         }
         let w = |o: usize| u32_at(payload, base + o).ok();
         let shift = if w(64)? == u32::MAX {
-            0
+            Some(0)
         } else if w(68)? == u32::MAX {
-            4
+            Some(4)
         } else {
-            return None;
+            None
         };
-        Some(Texture32 {
-            width: w(60 + shift)?,
-            mips: w(68 + shift)?,
-            kind: w(72 + shift)?,
-            alpha: w(84 + shift)?,
-            height: w(88 + shift)?,
-        })
+        if let Some(shift) = shift {
+            let t = Texture32 {
+                width: w(60 + shift)?,
+                mips: w(68 + shift)?,
+                kind: w(72 + shift)?,
+                alpha: w(84 + shift)?,
+                height: w(88 + shift)?,
+            };
+            if t.is_plausible() {
+                return Some(t);
+            }
+        }
+        let t = Texture32 {
+            width: w(52)?,
+            height: w(56)?,
+            mips: w(60)?,
+            kind: w(32)?,
+            alpha: w(88)?,
+        };
+        t.is_plausible().then_some(t)
+    }
+}
+
+impl Texture32 {
+    /// Power-of-two size up to 16384, a mip count that fits the size, a known element type.
+    fn is_plausible(&self) -> bool {
+        let pow2 = |v: u32| v.is_power_of_two() && v <= 16384;
+        let longest = self.width.max(self.height);
+        pow2(self.width)
+            && pow2(self.height)
+            && self.kind <= 4
+            && self.mips >= 1
+            && self.mips <= longest.ilog2() + 1
     }
 }
 
@@ -350,6 +378,29 @@ mod tests {
         let db = parse(&d, &Limits::default()).unwrap();
         let t = db.texture(&d, 8).unwrap();
         assert_eq!((t.width, t.mips), (1024, 8));
+    }
+
+    #[test]
+    fn texture_layout_of_client_1_1() {
+        let mut d = build();
+        let start = d.len() - 104;
+        let body = &mut d[start..];
+        body.fill(0);
+        let put = |b: &mut [u8], at: usize, v: u32| b[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        put(body, 32, 2);
+        put(body, 52, 256);
+        put(body, 56, 128);
+        put(body, 60, 6);
+        put(body, 64, u32::MAX);
+        put(body, 68, 256);
+        let db = parse(&d, &Limits::default()).unwrap();
+        let t = db.texture(&d, 8).unwrap();
+        assert_eq!((t.width, t.height, t.mips, t.kind), (256, 128, 6, 2));
+        // An implausible mip count rejects the reading instead of returning garbage.
+        let n = d.len() - 104;
+        d[n + 60..n + 64].copy_from_slice(&40u32.to_le_bytes());
+        let db = parse(&d, &Limits::default()).unwrap();
+        assert!(db.texture(&d, 8).is_none());
     }
 
     /// Real file check; set `ADV_DB32_V10` to an inflated client 10.0 `pack.bin`.
