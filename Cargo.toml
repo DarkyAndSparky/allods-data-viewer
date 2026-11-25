@@ -13,7 +13,7 @@ repository = "https://github.com/DarkyAndSparky/allods-data-viewer"
 flate2 = "1.1.11"
 lzma-rust2 = { version = "0.25.0", default-features = false, features = ["std", "xz", "optimization"] }
 sevenz-rust2 = { version = "0.25.0", default-features = false }
-rusty_mp3 = "=1.1.0"
+rusty_mp3 = "=1.2.0"
 theora-rs = "=0.1.0"
 serde_json = "1.0.154"
 zip = { version = "9.5.0", default-features = false, features = ["deflate-flate2"] }
