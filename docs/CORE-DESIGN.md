@@ -8,7 +8,7 @@
 
 ```
 allods-data-viewer/
-├── Cargo.toml                workspace: crates/core, crates/cli; edition 2024; rust-version 1.99
+├── Cargo.toml                workspace: crates/core, crates/cli; edition 2024; rust-version 1.100
 ├── crates/
 │   ├── core/                 пакет adv-core, библиотека без интерфейса
 │   │   └── src/lib.rs, error.rs      только тип Error и функция version()

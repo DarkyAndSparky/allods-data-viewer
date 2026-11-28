@@ -9,7 +9,7 @@ Formats are described in `docs/formats/`; read the note before touching a reader
 
 ## Project facts
 
-- Stack: Rust 1.99 (edition 2024), workspace `crates/core` (adv-core), `crates/cli` (adv-cli), `crates/session` (virtual tree and previews for the app), `crates/desktop` (Tauri 2.12 shell, no format code); `web/` (Vite + TypeScript, Node.js 26+).
+- Stack: Rust 1.100 (edition 2024), workspace `crates/core` (adv-core), `crates/cli` (adv-cli), `crates/session` (virtual tree and previews for the app), `crates/desktop` (Tauri 2.12 shell, no format code); `web/` (Vite + TypeScript, Node.js 26+).
 - Checks (all must pass before you say "done"; build `web/` first, because `crates/desktop` embeds `web/dist`; on Linux Tauri needs webkit2gtk-4.1 dev packages):
   - `cargo fmt --all --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`

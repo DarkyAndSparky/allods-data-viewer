@@ -182,3 +182,29 @@ The first two words `u32 0; u32 payload` are a blob header (`localID` 0, `size`)
 container as in geometry files. The database record `SkeletalAnimation` carries `fps`,
 `startFrame`, `endFrame`, `looped`, `speed`, `blendTime` and events; see
 [../TOOLS-STUDY.md](../TOOLS-STUDY.md).
+
+## Client 1.1.00.41: clips, bone names, material tracks (checked 2026-11-26)
+
+Status: **verified** for reading; the link between track order and the skeleton of the model is **not verified** on this client.
+
+- The format of the section above holds for client 1.1.00.41. All 5 776 clips of `Characters.pak` (2 576) and `Creatures.pak` (3 200) pass `animation::decode` with all its checks: 336 449 frames, 453 266 bone tracks.
+- Poses match the sampling code of the MIT Python exporter (written for 1.1.02.0): 289 clips (every 20th), frames first, middle and last of every bone, 68 424 poses. Largest difference: position 2.3e-6, scale 5.3e-7, quaternion `|dot|` at least 0.9999992 (about 0.0016 degrees). So the meaning of the channels is confirmed: positions and scale are `min + step * code`, the three angles are `word * 2π / 65536` and combine as the product of rotations about z, y and x.
+- Bone names: the name table at inflated offset 20 (`{u32 offset from the entry, u32 byte length}` per entry, text padded with zeros) has one name per bone track in all 5 776 clips. `animation::bone_names` reads it. The `nameOrder` array (offset 28) is a permutation used for lookups by name; it is not read.
+- Material tracks: the material records at offset 36 and their names at offset 44 (`MaterialAtom`, 20 bytes: `u16` channel flags, `u16` sample size, byte vector of samples, an empty float vector). Flags: 1 transparency (1 byte per frame), 2 U shift (`u16`), 4 V shift (`u16`); the sample size is the sum of the flagged channels and the vector holds exactly one sample per frame. Transparency is the amount removed (opacity `1 - value`); the shifts are fractions of a turn that wrap around. Channels that are not flagged are 0, not taken from the float list. `animation::material_tracks` reads them; `adv anim` prints them.
+- On the 5 776 clips 32 have material tracks (111 tracks: transparency only 102, V shift only 6, U shift only 2, transparency and V shift 1). Example: `ArchdemonMage.Death` (181 frames, 94 bones) fades 8 materials. 57 samples of 6 clips agree with the exporter (largest difference 3.7e-7).
+- Not verified: that track `i` belongs to bone `i` of the model's skeleton on 1.1 (the names allow the check against the bone names of the geometry); that the pictures move correctly in the window; the interpolation between frames.
+
+### Binding of tracks to the skeleton on client 1.1.00.41 (checked 2026-11-26)
+
+**Bind by name, not by number.** The older sections say that a clip binds to the model by bone index and that the names only confirm it; that holds for most clips but not for all on this client. All 5 776 clips of `Characters.pak` and `Creatures.pak` were compared with the skeleton names of the geometry in their model folder (`.../<Model>/Animations/X.<Clip>.(SkeletalAnimation).bin` and `.../<Model>/*.(Geometry).bin`):
+
+| Relation of the clip's bone names to the skeleton | Clips |
+|---|---|
+| identical names, same order | 4 233 |
+| same set of names, other order | 36 |
+| fewer bones than the skeleton, names in the skeleton's order (for example 110 of 116 on `ElfFemale`) | 1 491 |
+| a name that is not in the skeleton (`KaniaFemale.SpecialAttakUnarmed`) | 1 |
+
+So 1 527 of 5 776 clips (26 %) cannot be bound by number: 1 491 have another track count and 36 would be bound to the wrong bones. `Clip::names` carries the bone name of every track; `Geometry::to_glb_animated` binds by name: bones without a track keep their bind pose, tracks without a bone are dropped, a repeated name animates the bone once, and a clip with no name table falls back to the by-number rule (one track per bone).
+
+End to end (every clip with the geometry of its folder): 5 716 of 5 761 clips give an animated GLB; 444 294 of 452 531 skeleton bones are animated in those files. The 45 that fail (`Creatures/EvilEyeBoss` 9 clips, `Creatures/GolemJunes` 36) fail because each of the two models has 2 bones whose local rotation is a reflection (determinant not 1); the GLB writer accepts only proper rotations (existing rule of `rig_json`), this is not new. Not checked: that the animated models look right in a viewer.

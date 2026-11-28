@@ -25,6 +25,7 @@
 | D-016 | Node.js 26 или новее (`.nvmrc`, `engines`, CI) | решение владельца; 26 — LTS, 26.13.0 от 2026-10-28 | `docs/BUILD-WINDOWS.md` |
 | D-017 | CI: `actions/checkout@v7`, `setup-node@v7`, `codeql-action@v4`, `gitleaks-action@v3`; добавлены `codeql.yml` и `gitleaks.yml`; SHA-закрепление пока нет | версии сверены 2026-11-10 | `.github/workflows/` |
 | D-013 | Полный архив репозитория (с `.git`) отдаём при каждой поставке | требование владельца | процесс |
+| D-018 | Тулчейн Rust 1.100 вместо 1.99 (`rust-toolchain.toml`, `rust-version`, README, INSTALL, BUILD-WINDOWS) | решение владельца 2026-11-26; на rustc 1.100.0 в песочнице чисто `cargo fmt --check` и `clippy -D warnings`, 298 тестов Rust проходят; на Windows ещё не собиралось | `rust-toolchain.toml`, `Cargo.toml` |
 
 ## 2. Открытые вопросы к владельцу
 

@@ -12,7 +12,7 @@ Nothing here is guessed: an empty or `unknown` cell means nobody has tested it.
 | Generation | Where it comes from | Pack database layout |
 |---|---|---|
 | 7.0 | Cloud Pirates 1.5 / 1.7, `Bin/pack.bin` | 32-bit (`Bits32`), file names present |
-| 1.1.00.41 | client 1.1, `Bin.pak` holds `Bin/pack.bin` | 32-bit, same container as 7.0; texture records and sound records read, model elements not |
+| 1.1.00.41 | client 1.1, `Bin.pak` holds `Bin/pack.bin` and 78 `Bin/Maps_*.bin` | 32-bit, same container as 7.0; signature `2419FD3C1B6C738A`; texture records, sound records and model elements (texture per element) read |
 | 1.1.02.0 | older clients (the Python exporter targets it) | not read by this project yet |
 | 11.0.12 | Steam depot, `BaseLoceng_eu.pak` | unknown |
 | 15.0 | x64 database | 64-bit (`V2`), see `docs/formats/bin-db.md` |
@@ -34,6 +34,21 @@ Nothing here is guessed: an empty or `unknown` cell means nobody has tested it.
 | Texts `.loc` / `Texts.pak` | unknown | unknown | unknown | verified | |
 | Map chunks | unknown | unknown | unknown | verified | see `docs/formats/map-chunk.md` |
 | Video | unknown | unknown | unknown | verified | Windows check pending |
+
+## Client 1.1.00.41 (checked 2026-11-26 on the client release `ao-clt-1.1.00.41`)
+
+| Feature | Status | Note |
+|---|---|---|
+| Version signature | verified | `2419FD3C1B6C738A` in chunk 0 of all 79 databases of `Bin.pak`; `Profiles/game.version` says `1.1.00.41`. Not in the EditorTools table, which lists `5847DB469364493C` for 1.1.02.0 |
+| Textured models (checkbox in the viewer, `glb_textured`) | verified on the exported file, not on screen | since 0.1.87 textures are found in all archives, any letter case: 4 875 of 5 032 models have at least one texture, 154 none, 3 not in the database. 0.1.83 to 0.1.86 left every 1.1 model white (textures were searched only in the model's own archive) |
+| Model elements and texture per element | verified (record reading) | 5 189 Geometry records, 5 186 with elements, 39 585 elements, 38 675 with a diffuse texture; an independent Python reader (the MIT exporter, only its signature check relaxed) gives the same counts and the same ranges and textures for `ElfFemale`. Not checked: that the pictures look right in the window |
+| Geometry `.bin` of 301 resources (characters, creatures, Kania) | verified (reading) | read by the exporter code with all its bounds checks passing; not rendered |
+| `Texture` records | verified | 1 834 of 2 280 `.bin` textures match their record (mip count, level sizes); the other 446 have no record in `pack.bin` (their records are probably in `Maps_*.bin`, not read) |
+| Skeletal animation clips | verified (reading and binding) | all 5 776 clips of `Characters.pak` and `Creatures.pak` decode; poses agree with the Python exporter on 68 424 samples; bone names and material tracks (transparency, texture shift) read. Tracks are bound to bones by name (26 % of the clips cannot be bound by number); 5 716 of 5 761 clips give an animated GLB. Not checked: the look in a viewer, playback of material tracks |
+| 32-bit index buffers | partial | 32 of 5 189 Geometry records have the flag at +60 set (30 of them have more than 65 535 vertices). Whether our geometry reader handles them is not checked |
+| `material.params` of elements | no | the record layout of 1.1 was not checked, the field is left empty |
+
+Client 1.1.02.0 (signature `5847DB469364493C`) is recognised by signature only; no file of it was read here.
 
 ## How to test a new client
 

@@ -195,3 +195,16 @@ size and mips on 14 108 textures (the sizes decode the pictures correctly, check
 `HarpyWings_Red` 512x256 and `ElfFemaleFaceLower00` 256x128); **draft** for type (+32) and alpha (+88).
 The model element layout of 7.0 (`docs/formats/model-binding.md`) does not read 1.1 geometry: all 2 726
 models of the extracted packs report "not in the resource database".
+
+## Version signatures (registry)
+
+`adv-core::version` keeps a table of known signatures (8 bytes in the 32-bit layout, 12 in the
+64-bit layout) with the client they belong to; `adv db find` prints it as the fifth column. The
+signature is a hash of the struct definitions, so each client build brings its own. Rows copied from
+the AllodsOnlineEditorTools table are marked as not checked on our files; the row of client
+1.1.00.41 (`2419FD3C1B6C738A`) was checked on the client release.
+
+Client 1.1.00.41: `Bin.pak` holds `Bin/pack.bin` (zlib, 109 711 384 bytes inflated, chunks 0 to 4, no
+pak lists) and 78 `Bin/Maps_*.bin`, all with the same signature; the main database has 149 706
+resources. In chunk 4 (fixes) the size field counts entries of 8 bytes, not bytes (1 755 609 entries
+= 14 044 872 bytes, which is exactly the rest of the file). Status: **verified** on this client.

@@ -34,7 +34,7 @@
 
 | Инструмент | Зачем | Версия |
 |---|---|---|
-| Rust | компилирует приложение | 1.99 (проект ставит нужную версию сам) |
+| Rust | компилирует приложение | 1.100 (проект ставит нужную версию сам) |
 | Microsoft C++ Build Tools (MSVC) | компилятор и компоновщик, которые Rust требует на Windows | любая актуальная |
 | Node.js | собирает веб-интерфейс | **26 или новее** |
 | WebView2 Runtime | рисует окно приложения | обычно уже есть в Windows 10/11 |
@@ -66,7 +66,7 @@ Rust в Windows нужен компоновщик от Microsoft. Ставьте
 2. Запустите его и выберите **1) Proceed with standard installation**.
 3. Когда появится сообщение, что Rust установлен, закройте окно.
 
-Выбирать версию Rust не нужно: файл `rust-toolchain.toml` в проекте закрепляет 1.99, и rustup скачает её сам при первой сборке.
+Выбирать версию Rust не нужно: файл `rust-toolchain.toml` в проекте закрепляет 1.100, и rustup скачает её сам при первой сборке.
 
 ### Шаг 4. Установить Node.js
 
@@ -215,7 +215,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 . "$HOME/.cargo/env"
 ```
 
-Версия Rust 1.99 закреплена в `rust-toolchain.toml`, rustup скачает её сам при первой сборке.
+Версия Rust 1.100 закреплена в `rust-toolchain.toml`, rustup скачает её сам при первой сборке.
 
 ### L4. Установить Node.js 26 или новее
 
@@ -295,7 +295,7 @@ bash ./scripts/check-all.sh
 
 ## Разработка и тесты
 
-Нужны [Rust](https://rustup.rs) (stable, 1.99 или новее) и [Node.js](https://nodejs.org) 26 или новее (LTS).
+Нужны [Rust](https://rustup.rs) (stable, 1.100 или новее) и [Node.js](https://nodejs.org) 26 или новее (LTS).
 В Windows для Rust также нужны Microsoft C++ Build Tools.
 
 ```

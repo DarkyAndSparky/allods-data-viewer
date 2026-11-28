@@ -461,6 +461,101 @@ mod db_commands {
     }
 
     #[test]
+    fn find_names_the_client_of_a_32_bit_database() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tmp");
+        // Chunk 0 (size 8, the signature of client 1.1.00.41), then the start of chunk 1.
+        let mut db = Vec::new();
+        db.extend(0u32.to_le_bytes());
+        db.extend(8u32.to_le_bytes());
+        db.extend([0x24, 0x19, 0xFD, 0x3C, 0x1B, 0x6C, 0x73, 0x8A]);
+        db.extend(1u32.to_le_bytes());
+        db.extend([0u8; 16]);
+        let pak = dir.path().join("Bin.pak");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&pak).expect("create"));
+        let opts = zip::write::SimpleFileOptions::default();
+        zip.start_file("Bin/pack.bin", opts).expect("start");
+        zip.write_all(&db).expect("write");
+        zip.finish().expect("finish");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["db", "find"])
+            .arg(dir.path())
+            .output()
+            .expect("run");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains("Bin/pack.bin")
+                && text.contains("2419FD3C1B6C738A")
+                && text.contains("Allods Online 1.1.00.41"),
+            "{text}"
+        );
+    }
+
+    /// A clip with one bone named `Bip01`, no material tracks and a 2 frame, 30 per second header.
+    fn clip_with_one_named_bone() -> Vec<u8> {
+        let mut d = vec![0u8; 64];
+        d[8..10].copy_from_slice(&30u16.to_le_bytes());
+        d[10..12].copy_from_slice(&2u16.to_le_bytes());
+        d[12..16].copy_from_slice(&(64u32 - 12).to_le_bytes());
+        d[16..20].copy_from_slice(&1u32.to_le_bytes());
+        d.extend([0u8; 20]);
+        let table = d.len();
+        d.extend([0u8; 8]);
+        let text = d.len();
+        d.extend(b"Bip01\0\0");
+        d[table..table + 4].copy_from_slice(&((text - table) as u32).to_le_bytes());
+        d[table + 4..table + 8].copy_from_slice(&7u32.to_le_bytes());
+        d[20..24].copy_from_slice(&((table - 20) as u32).to_le_bytes());
+        d[24..28].copy_from_slice(&1u32.to_le_bytes());
+        let size = (d.len() - 8) as u32;
+        d[4..8].copy_from_slice(&size.to_le_bytes());
+        d
+    }
+
+    #[test]
+    fn anim_info_lists_bones_and_materials() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let file = dir.path().join("X.(SkeletalAnimation).bin");
+        std::fs::write(&file, clip_with_one_named_bone()).expect("write");
+        let out = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .args(["anim", "--json"])
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+        assert_eq!(doc["fps"], 30);
+        assert_eq!(doc["frames"], 2);
+        assert_eq!(doc["bones"][0], "Bip01");
+        assert_eq!(doc["materials"].as_array().map(Vec::len), Some(0));
+        let text = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .arg("anim")
+            .arg(&file)
+            .output()
+            .expect("run");
+        let text = String::from_utf8_lossy(&text.stdout);
+        assert!(
+            text.contains("Bones: 1")
+                && text.contains("Bip01")
+                && text.contains("Material tracks: 0"),
+            "{text}"
+        );
+        // Not a clip: a clean error, exit code 1.
+        std::fs::write(&file, b"not a clip at all, just text").expect("write");
+        let bad = Command::new(env!("CARGO_BIN_EXE_adv"))
+            .arg("anim")
+            .arg(&file)
+            .output()
+            .expect("run");
+        assert_eq!(bad.status.code(), Some(1));
+    }
+
+    #[test]
     fn info_and_errors() {
         let dir = tempfile::tempdir().expect("tmp");
         let bad = dir.path().join("x.bin");

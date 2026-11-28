@@ -69,6 +69,15 @@ enum Command {
         /// File (zlib compressed or already inflated).
         file: PathBuf,
     },
+    /// Read an animation clip (`X.(SkeletalAnimation).bin`): frame rate, frames, bone names and
+    /// the material tracks (texture scrolling, transparency). `--json` for a document.
+    Anim {
+        /// Clip `.bin` file (zlib compressed or already inflated).
+        file: PathBuf,
+        /// Print a JSON document instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read model geometry (`X.(Geometry).bin`): info and OBJ export.
     Geom {
         #[command(subcommand)]
@@ -178,7 +187,8 @@ enum DbCommand {
         /// Database file (zlib compressed `.bin`).
         file: PathBuf,
     },
-    /// Find resource databases inside `.pak` files by their signature.
+    /// Find resource databases inside `.pak` files by their signature. Prints pak, entry, size,
+    /// signature (hex) and the client the signature belongs to (`unknown` when it is not known).
     Find {
         /// Folder with `.pak` files (not recursive) or single `.pak` files.
         paths: Vec<PathBuf>,
@@ -866,6 +876,55 @@ fn run(command: Command) -> Result<u8, String> {
             }
             Ok(0)
         }
+        Command::Anim { file, json } => {
+            let raw = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let data = adv_core::geometry::inflate(&raw, &Limits::default())
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            let fail = |e: adv_core::error::Error| format!("{}: {e}", file.display());
+            let info = adv_core::animation::parse(&data).map_err(fail)?;
+            let names = adv_core::animation::bone_names(&data).map_err(fail)?;
+            let materials = adv_core::animation::material_tracks(&data).map_err(fail)?;
+            if json {
+                let doc = serde_json::json!({
+                    "fps": info.fps,
+                    "frames": info.frames,
+                    "seconds": info.seconds(),
+                    "bones": names,
+                    "materials": materials.iter().map(|m| serde_json::json!({
+                        "name": m.name,
+                        "transparency": m.has_transparency,
+                        "translateU": m.has_translate_u,
+                        "translateV": m.has_translate_v,
+                    })).collect::<Vec<_>>(),
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?
+                );
+            } else {
+                println!("Frame rate: {} per second", info.fps);
+                println!("Frames: {} ({:.2} s)", info.frames, info.seconds());
+                println!("Bones: {}", names.len());
+                for (i, n) in names.iter().enumerate() {
+                    println!("  {i:3} {n}");
+                }
+                println!("Material tracks: {}", materials.len());
+                for m in &materials {
+                    let mut ch = Vec::new();
+                    if m.has_transparency {
+                        ch.push("transparency");
+                    }
+                    if m.has_translate_u {
+                        ch.push("U shift");
+                    }
+                    if m.has_translate_v {
+                        ch.push("V shift");
+                    }
+                    println!("  {}  ({})", m.name, ch.join(", "));
+                }
+            }
+            Ok(0)
+        }
         Command::Geom { command } => {
             let (file, stride) = match &command {
                 GeomCommand::Info { file, stride }
@@ -969,15 +1028,16 @@ fn run(command: Command) -> Result<u8, String> {
                     let Ok((data, _)) = arc.read(&e, Layer::Raw) else {
                         continue;
                     };
-                    let Some(v) = adv_core::db::db_signature(&data) else {
+                    let Some(ident) = adv_core::version::identify(&data) else {
                         continue;
                     };
                     found += 1;
-                    let hex: String = v.iter().map(|b| format!("{b:02X}")).collect();
+                    let hex = ident.hex();
+                    let client = ident.client();
                     let pak_name = pak
                         .file_name()
                         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-                    println!("{pak_name}\t{name}\t{}\t{hex}", e.size);
+                    println!("{pak_name}\t{name}\t{}\t{hex}\t{client}", e.size);
                     if let Some(out) = &output {
                         let stem = pak
                             .file_stem()

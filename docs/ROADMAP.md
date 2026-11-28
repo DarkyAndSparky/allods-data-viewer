@@ -78,6 +78,7 @@ still unknown.
 - Localization browser, side by side Russian and English
 - Think later: video export as MKV (lossless remux of the Theora stream); no MP4, it would need a re-encode and lose quality (maintainer decision 2026-11-21)
 - Plugin system for new formats
+- FBX export of models (maintainer decision 2026-11-26: not now; GLB plus a Blender add-on first). Plan of the next stages: [PORTING-PLAN.md](PORTING-PLAN.md)
 - Browser build of the core via WebAssembly
 
 ## Maintainer wishes (2026-11-17)

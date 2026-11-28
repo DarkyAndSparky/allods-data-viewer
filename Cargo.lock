@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "adv-cli"
-version = "0.1.82"
+version = "0.1.87"
 dependencies = [
  "adv-core",
  "clap",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "adv-core"
-version = "0.1.82"
+version = "0.1.87"
 dependencies = [
  "flate2",
  "lzma-rust2",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "adv-desktop"
-version = "0.1.82"
+version = "0.1.87"
 dependencies = [
  "adv-core",
  "adv-session",
@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "adv-session"
-version = "0.1.82"
+version = "0.1.87"
 dependencies = [
  "adv-core",
  "flate2",
@@ -663,7 +663,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]

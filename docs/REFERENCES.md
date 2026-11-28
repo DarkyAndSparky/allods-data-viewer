@@ -49,3 +49,15 @@ Notes:
 | DarkyAndSparky/ao-clt-1.1.00.41 (client 1.1.00.41 English, `STRUCTURE.md`) | none shown | Same |
 | DarkyAndSparky/ao-helper-rv168362 (tools and Loc kit for revision 168362) | none shown | Same |
 | AllodsDevelopersCommunity/AllodsLegacy-server-data (XDB data of the 4.0.4.42 USGala server, 2018) | none shown | Facts only; useful to learn real `.xdb` resource names and folder layout, nothing is copied into this repository |
+
+## Added 2026-11-26 (tools from the maintainer's audit)
+
+| Project | License | How we may use it |
+|---|---|---|
+| enoly/allods-resource-exporter (Python, client 1.1.02.0; one commit of 2026-11-23) | MIT (`LICENSE`, "Allods Resource Exporter contributors") | Code may be ported with an entry in `NOTICE`; so far only facts (record offsets, animation atom layout, collision and particle layouts) are used, nothing is copied. Its own docs are `docs/*.md` in the repository |
+| AllodsOnlineEditorTools v2 archive (identical to the checked version) | MIT | As above |
+| AllodsOnlineDatabaseUnpacker dev / master archives (identical content) | none shown | Facts only; it loads the game's own DLLs, which we do not do |
+| blender-import (Blender 2.90 add-on) | none shown | Facts only |
+| AODataViewer (NeoAxis based viewer) | none stated; maintainer-confirmed permission recorded earlier | Facts and interface ideas only; its 109 binary DLLs are not ours |
+| AOUIEditor | MIT | Facts about UI add-ons, may be ported with `NOTICE` |
+| AllodsV4_Developer (injected DLL: time faking, file hooks, client code patch) | none shown | **Not used**: it patches the running client, which is out of scope (`docs/ROADMAP.md`) |

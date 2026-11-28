@@ -37,6 +37,7 @@ pub mod svg;
 pub mod tdb;
 pub mod texheur;
 pub mod texture;
+pub mod version;
 pub mod video;
 #[cfg(test)]
 mod video_fixture;

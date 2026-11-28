@@ -1,7 +1,9 @@
 //! Header of `X.<Clip>.(SkeletalAnimation).bin` (see `docs/formats/skeletal-animation.md`).
 //!
 //! [`parse`] reads the header: frame rate, frame count and bone count. [`decode`] reads the
-//! per-bone tracks into one pose (position, scale, rotation quaternion) per frame.
+//! per-bone tracks into one pose (position, scale, rotation quaternion) per frame,
+//! [`bone_names`] reads the track names and [`material_tracks`] the texture scroll and
+//! transparency tracks.
 
 use crate::error::{Error, Result};
 
@@ -72,15 +74,22 @@ pub struct Pose {
     pub rotation: [f32; 4],
 }
 
-/// A decoded clip: `tracks[bone][frame]`, bones in the geometry's bone order.
+/// A decoded clip: `tracks[track][frame]`.
+///
+/// A track belongs to the bone of the model with the same name (see `names`). Do not take the
+/// track number for the bone number: a clip may animate fewer bones than the skeleton has, and
+/// the order can differ.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Clip {
     /// Frames per second.
     pub fps: u16,
     /// Number of frames.
     pub frames: u16,
-    /// One list of poses per bone.
+    /// One list of poses per track.
     pub tracks: Vec<Vec<Pose>>,
+    /// The bone name of every track, or empty when the clip has no usable name table (then the
+    /// tracks are taken to be in the skeleton's order).
+    pub names: Vec<String>,
 }
 
 fn f32_at(d: &[u8], at: usize) -> Option<f32> {
@@ -215,11 +224,175 @@ pub fn decode(d: &[u8]) -> Result<Clip> {
         }
         tracks.push(poses);
     }
+    let names = bone_names(d)
+        .ok()
+        .filter(|n| n.len() == tracks.len())
+        .unwrap_or_default();
     Ok(Clip {
         fps: info.fps,
         frames: info.frames,
         tracks,
+        names,
     })
+}
+
+/// Most material tracks a clip may hold.
+const MAX_MATERIALS: usize = 1024;
+
+/// The part of a clip that names things: header position of each array triple (relative offset,
+/// item count) inside an inflated clip.
+const NAMES_AT: usize = 20;
+const MATERIALS_AT: usize = 36;
+const MATERIAL_NAMES_AT: usize = 44;
+/// Size of one material record.
+const MATERIAL_RECORD_SIZE: usize = 20;
+
+/// Position and item count of the array triple whose header lies at `header`: the first word is
+/// the offset from the header, the second the item count.
+fn array_at(d: &[u8], header: usize, stride: usize, what: &str) -> Result<(usize, usize)> {
+    let bad = || Error::format(format!("skeletal animation: bad {what} array"));
+    let rel = u32_at(d, header).ok_or_else(bad)? as usize;
+    let count = u32_at(d, header + 4).ok_or_else(bad)? as usize;
+    let start = header.checked_add(rel).ok_or_else(bad)?;
+    let bytes = count.checked_mul(stride).ok_or_else(bad)?;
+    if start.checked_add(bytes).is_none_or(|end| end > d.len()) {
+        return Err(bad());
+    }
+    Ok((start, count))
+}
+
+/// Reads a name table: `count` entries of (offset from the entry, byte length), the text is
+/// padded with zero bytes.
+fn name_table(d: &[u8], header: usize, what: &str) -> Result<Vec<String>> {
+    let bad = || Error::format(format!("skeletal animation: bad {what} name"));
+    let (start, count) = array_at(d, header, 8, what)?;
+    if count > MAX_MATERIALS {
+        return Err(bad());
+    }
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let at = start + i * 8;
+        let rel = u32_at(d, at).ok_or_else(bad)? as usize;
+        let len = u32_at(d, at + 4).ok_or_else(bad)? as usize;
+        let from = at.checked_add(rel).ok_or_else(bad)?;
+        let to = from.checked_add(len).ok_or_else(bad)?;
+        let bytes = d.get(from..to).ok_or_else(bad)?;
+        let keep = bytes.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
+        out.push(String::from_utf8_lossy(&bytes[..keep]).into_owned());
+    }
+    Ok(out)
+}
+
+/// Names of the bone tracks of an inflated clip, in track order (the order of [`Clip::tracks`]).
+///
+/// # Errors
+///
+/// Fails when the header is implausible, the name table points outside the data or does not
+/// have one name per bone track.
+pub fn bone_names(d: &[u8]) -> Result<Vec<String>> {
+    let info = parse(d)?;
+    let names = name_table(d, NAMES_AT, "bone")?;
+    if names.len() != info.bones as usize {
+        return Err(Error::format(
+            "skeletal animation: name count differs from the bone count",
+        ));
+    }
+    Ok(names)
+}
+
+/// One sample of a material track. A channel the track does not carry is `0.0`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MaterialSample {
+    /// Transparency as the amount *removed* (`0.0` leaves the material as it is, `1.0` removes
+    /// all of it); the opacity is `1 - transparency`.
+    pub transparency: f32,
+    /// Texture shift along U as a fraction of one turn. The stored value wraps around, so
+    /// interpolate on the shortest way round.
+    pub translate_u: f32,
+    /// Texture shift along V, same meaning as `translate_u`.
+    pub translate_v: f32,
+}
+
+/// The animation of one material of the model, one sample per frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaterialTrack {
+    /// Material name, as in the `ModelElement` of the geometry.
+    pub name: String,
+    /// The track carries the transparency channel.
+    pub has_transparency: bool,
+    /// The track carries the U shift channel.
+    pub has_translate_u: bool,
+    /// The track carries the V shift channel.
+    pub has_translate_v: bool,
+    /// One sample per frame of the clip.
+    pub samples: Vec<MaterialSample>,
+}
+
+/// Reads the material tracks of an inflated clip (texture scrolling and transparency).
+///
+/// A clip without material animation gives an empty list.
+///
+/// # Errors
+///
+/// Fails when the header is implausible, a table points outside the data, the channel flags are
+/// unknown, or the sample size does not fit the frame count.
+pub fn material_tracks(d: &[u8]) -> Result<Vec<MaterialTrack>> {
+    let info = parse(d)?;
+    let bad = |m: &str| Error::format(format!("skeletal animation: material track: {m}"));
+    let (start, count) = array_at(d, MATERIALS_AT, MATERIAL_RECORD_SIZE, "material")?;
+    let names = name_table(d, MATERIAL_NAMES_AT, "material")?;
+    if count > MAX_MATERIALS || names.len() != count {
+        return Err(bad("count does not match the names"));
+    }
+    let frames = usize::from(info.frames);
+    let mut out = Vec::with_capacity(count);
+    for (i, name) in names.into_iter().enumerate() {
+        let rec = start + i * MATERIAL_RECORD_SIZE;
+        let flags = u16_at(d, rec).ok_or_else(|| bad("too short"))?;
+        let stride = usize::from(u16_at(d, rec + 2).ok_or_else(|| bad("too short"))?);
+        let size = usize::from(flags & 1)
+            + 2 * usize::from((flags >> 1) & 1)
+            + 2 * usize::from((flags >> 2) & 1);
+        if flags >= 8 || stride != size {
+            return Err(bad("unknown channel flags"));
+        }
+        let (data, bytes) = array_at(d, rec + 4, 1, "material samples")?;
+        let (_, floats) = array_at(d, rec + 12, 4, "material floats")?;
+        if floats != 0 || bytes != stride * frames {
+            return Err(bad("sample size does not fit the frame count"));
+        }
+        let mut samples = Vec::with_capacity(frames);
+        for f in 0..frames {
+            let mut at = data + f * stride;
+            let mut sample = MaterialSample {
+                transparency: 0.0,
+                translate_u: 0.0,
+                translate_v: 0.0,
+            };
+            if flags & 1 != 0 {
+                sample.transparency = f32::from(d[at]) / 255.0;
+                at += 1;
+            }
+            if flags & 2 != 0 {
+                sample.translate_u =
+                    f32::from(u16_at(d, at).ok_or_else(|| bad("too short"))?) / 65535.0;
+                at += 2;
+            }
+            if flags & 4 != 0 {
+                sample.translate_v =
+                    f32::from(u16_at(d, at).ok_or_else(|| bad("too short"))?) / 65535.0;
+            }
+            samples.push(sample);
+        }
+        out.push(MaterialTrack {
+            name,
+            has_transparency: flags & 1 != 0,
+            has_translate_u: flags & 2 != 0,
+            has_translate_v: flags & 4 != 0,
+            samples,
+        });
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -360,5 +533,126 @@ mod tests {
         let mut far = good.clone();
         far[424..428].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(decode(&far).is_err());
+    }
+
+    /// Adds a name table (array triple at `header` of the clip) with the given names.
+    fn put_names(d: &mut Vec<u8>, header: usize, names: &[&str]) {
+        let table = d.len();
+        d.resize(table + names.len() * 8, 0);
+        for (i, n) in names.iter().enumerate() {
+            let entry = table + i * 8;
+            let text = d.len();
+            d.extend(n.as_bytes());
+            d.extend([0u8; 2]);
+            d[entry..entry + 4].copy_from_slice(&((text - entry) as u32).to_le_bytes());
+            d[entry + 4..entry + 8].copy_from_slice(&((n.len() + 2) as u32).to_le_bytes());
+        }
+        d[header..header + 4].copy_from_slice(&((table - header) as u32).to_le_bytes());
+        d[header + 4..header + 8].copy_from_slice(&(names.len() as u32).to_le_bytes());
+    }
+
+    fn fix_size(d: &mut [u8]) {
+        let size = (d.len() - 8) as u32;
+        d[4..8].copy_from_slice(&size.to_le_bytes());
+    }
+
+    #[test]
+    fn bone_names_are_read_and_checked_against_the_bone_count() {
+        let mut d = clip_with(2, &[(0x7f, vec![], vec![0; 7]), (0x7f, vec![], vec![0; 7])]);
+        put_names(&mut d, NAMES_AT, &["Bip01", "Bip01 Pelvis"]);
+        fix_size(&mut d);
+        assert_eq!(bone_names(&d).unwrap(), ["Bip01", "Bip01 Pelvis"]);
+        let mut one = clip_with(2, &[(0x7f, vec![], vec![0; 7]), (0x7f, vec![], vec![0; 7])]);
+        put_names(&mut one, NAMES_AT, &["Bip01"]);
+        fix_size(&mut one);
+        assert!(bone_names(&one).is_err());
+        // No name table at all.
+        assert!(bone_names(&clip_with(2, &[(0x7f, vec![], vec![0; 7])])).is_err());
+    }
+
+    /// A 3 frame clip with one material track named `glow`: channel flags, sample size, the
+    /// sample bytes and the float count of the record.
+    fn clip_with_material(flags: u16, stride: u16, samples: &[u8], floats: u32) -> Vec<u8> {
+        let mut d = clip_with(3, &[(0x7f, vec![], vec![0; 7])]);
+        let rec = d.len();
+        d.resize(rec + MATERIAL_RECORD_SIZE, 0);
+        let sample_at = d.len();
+        d.extend(samples);
+        let put =
+            |d: &mut Vec<u8>, at: usize, v: u32| d[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        d[rec..rec + 2].copy_from_slice(&flags.to_le_bytes());
+        d[rec + 2..rec + 4].copy_from_slice(&stride.to_le_bytes());
+        put(&mut d, rec + 4, (sample_at - (rec + 4)) as u32);
+        put(&mut d, rec + 8, samples.len() as u32);
+        put(&mut d, rec + 12, (sample_at - (rec + 12)) as u32);
+        put(&mut d, rec + 16, floats);
+        put(&mut d, MATERIALS_AT, (rec - MATERIALS_AT) as u32);
+        put(&mut d, MATERIALS_AT + 4, 1);
+        put_names(&mut d, MATERIAL_NAMES_AT, &["glow"]);
+        fix_size(&mut d);
+        d
+    }
+
+    #[test]
+    fn material_track_with_all_channels_is_decoded() {
+        // 3 frames of (transparency byte, u word, v word) = 5 bytes each.
+        let mut s = Vec::new();
+        for (t, u, v) in [(0u8, 0u16, 65535u16), (255, 65535, 0), (51, 32768, 13107)] {
+            s.push(t);
+            s.extend(u.to_le_bytes());
+            s.extend(v.to_le_bytes());
+        }
+        let tracks = material_tracks(&clip_with_material(7, 5, &s, 0)).unwrap();
+        assert_eq!(tracks.len(), 1);
+        let t = &tracks[0];
+        assert_eq!(t.name, "glow");
+        assert!(t.has_transparency && t.has_translate_u && t.has_translate_v);
+        assert_eq!(t.samples.len(), 3);
+        assert!((t.samples[1].transparency - 1.0).abs() < 1e-6);
+        assert!((t.samples[1].translate_u - 1.0).abs() < 1e-6);
+        assert!((t.samples[2].transparency - 0.2).abs() < 1e-6);
+        assert!((t.samples[2].translate_v - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn material_channels_that_are_not_flagged_stay_zero() {
+        // Only the V shift: 2 bytes per frame.
+        let s: Vec<u8> = [100u16, 200, 300]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let t = &material_tracks(&clip_with_material(4, 2, &s, 0)).unwrap()[0];
+        assert!(!t.has_transparency && !t.has_translate_u && t.has_translate_v);
+        assert!(
+            t.samples
+                .iter()
+                .all(|x| x.transparency == 0.0 && x.translate_u == 0.0)
+        );
+        assert!((t.samples[2].translate_v - 300.0 / 65535.0).abs() < 1e-7);
+    }
+
+    #[test]
+    fn clip_without_materials_gives_an_empty_list_and_bad_ones_fail() {
+        assert!(
+            material_tracks(&clip_with(3, &[(0x7f, vec![], vec![0; 7])]))
+                .unwrap()
+                .is_empty()
+        );
+        let s = [0u8; 9];
+        // Unknown flag bit, wrong stride, wrong sample count and a float payload are all errors.
+        assert!(material_tracks(&clip_with_material(8, 0, &[], 0)).is_err());
+        assert!(material_tracks(&clip_with_material(7, 4, &s, 0)).is_err());
+        assert!(material_tracks(&clip_with_material(7, 5, &s, 0)).is_err());
+        assert!(material_tracks(&clip_with_material(1, 1, &[0, 0, 0], 1)).is_err());
+    }
+
+    #[test]
+    fn truncated_clips_never_panic_in_the_name_and_material_readers() {
+        let s: Vec<u8> = [1u16, 2, 3].iter().flat_map(|w| w.to_le_bytes()).collect();
+        let d = clip_with_material(4, 2, &s, 0);
+        for cut in 0..d.len() {
+            let _ = bone_names(&d[..cut]);
+            let _ = material_tracks(&d[..cut]);
+        }
     }
 }

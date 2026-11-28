@@ -1,6 +1,6 @@
 # Сборка и проверка на Windows
 
-Инструкция для владельца проекта. Все команды в PowerShell. Архив распаковывается в `%USERPROFILE%\Downloads\BUILDS\allods-data-viewer-<версия>`, там же собираем и запускаем; результаты экспорта кладём рядом, в `%USERPROFILE%\Downloads\BUILDS` (не в репозиторий). `C:\DEVELOP\allods-data-viewer` нужна только для заливки на GitHub. Требования: Rust 1.99 (ставится сам по `rust-toolchain.toml`), Node.js 26 или новее (`.nvmrc`, `engines` в `web/package.json`).
+Инструкция для владельца проекта. Все команды в PowerShell. Архив распаковывается в `%USERPROFILE%\Downloads\BUILDS\allods-data-viewer-<версия>`, там же собираем и запускаем; результаты экспорта кладём рядом, в `%USERPROFILE%\Downloads\BUILDS` (не в репозиторий). `C:\DEVELOP\allods-data-viewer` нужна только для заливки на GitHub. Требования: Rust 1.100 (ставится сам по `rust-toolchain.toml`), Node.js 26 или новее (`.nvmrc`, `engines` в `web/package.json`).
 
 ## 0. Быстрый путь: готовые скрипты
 
@@ -36,7 +36,7 @@ cargo test --workspace
 cargo run -p adv-cli
 ```
 
-Первый запуск скачает Rust 1.99 (rustup сделает это сам из `rust-toolchain.toml`) и зависимости, это несколько минут. Последняя команда должна напечатать строку вида `Allods Data Viewer <версия> (core <версия>)`.
+Первый запуск скачает Rust 1.100 (rustup сделает это сам из `rust-toolchain.toml`) и зависимости, это несколько минут. Последняя команда должна напечатать строку вида `Allods Data Viewer <версия> (core <версия>)`.
 
 ## 3. Проверить интерфейс
 
@@ -50,7 +50,7 @@ npm run build
 
 Если `npm ci` пишет про версию Node, стоит не 26.
 
-## 3а. Окно приложения (0.1.82)
+## 3а. Окно приложения (0.1.87)
 
 Нужны: Rust (уже стоит), Node 26, Visual Studio Build Tools с C++ (у вас есть) и WebView2 (в Windows 10/11 обычно уже установлен). Сначала собрать веб-часть, потом запустить окно:
 

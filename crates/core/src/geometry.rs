@@ -319,13 +319,14 @@ impl Geometry {
     }
 
     /// Like [`Geometry::to_glb`], and adds the clip as a glTF animation (translation and rotation
-    /// of every bone; scale is not animated). The clip must animate exactly the model's bones, in
-    /// the same order.
+    /// of every bone the clip animates; scale is not animated). Tracks are matched to bones by
+    /// name: bones without a track keep their bind pose and tracks without a bone are dropped. A
+    /// clip without names must have one track per bone, in the skeleton's order.
     ///
     /// # Errors
     ///
-    /// Fails like [`Geometry::to_glb`], and when the model has no usable skeleton or the clip's
-    /// bone count differs from it.
+    /// Fails like [`Geometry::to_glb`], and when the model has no usable skeleton, no bone of the
+    /// clip is a bone of the model, or a clip without names has another bone count.
     pub fn to_glb_animated(&self, clip: &crate::animation::Clip, name: &str) -> Result<Vec<u8>> {
         self.glb(Some((clip, name)), &[])
     }
@@ -368,13 +369,17 @@ impl Geometry {
         let (extra_attr, mut extra_access, mut extra_views, node_json, mut skin_json) =
             rig.unwrap_or_default();
         if let Some((clip, name)) = clip {
-            let bones = self.skeleton().map_or(0, |s| s.bones.len());
-            if node_json.is_empty() || clip.tracks.len() != bones {
+            let bone_names: Vec<String> = self
+                .skeleton()
+                .map(|s| s.bones.iter().map(|b| b.name.clone()).collect())
+                .unwrap_or_default();
+            if node_json.is_empty() {
                 return Err(Error::format(
                     "the clip does not match the model's skeleton",
                 ));
             }
-            let (access, views, anim) = animation_json(&mut bin, clip, name);
+            let bound = bind_tracks(clip, &bone_names)?;
+            let (access, views, anim) = animation_json(&mut bin, clip, name, &bound);
             extra_access.push_str(&access);
             extra_views.push_str(&views);
             skin_json.push_str(&anim);
@@ -708,13 +713,53 @@ impl Geometry {
     }
 }
 
+/// Pairs every track of the clip with the bone it animates: `(track, bone)`.
+///
+/// Tracks are matched to bones by name. Tracks whose name is not a bone of the model are left
+/// out, and so are bones without a track (they keep their bind pose). A clip without names is
+/// taken to be in the skeleton's order and must have one track per bone.
+fn bind_tracks(
+    clip: &crate::animation::Clip,
+    bone_names: &[String],
+) -> Result<Vec<(usize, usize)>> {
+    let mismatch = || Error::format("the clip does not match the model's skeleton");
+    if clip.names.is_empty() {
+        if clip.tracks.len() != bone_names.len() {
+            return Err(mismatch());
+        }
+        return Ok((0..bone_names.len()).map(|i| (i, i)).collect());
+    }
+    if clip.names.len() != clip.tracks.len() {
+        return Err(mismatch());
+    }
+    let mut bone_of: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (i, n) in bone_names.iter().enumerate() {
+        bone_of.entry(n.as_str()).or_insert(i);
+    }
+    let mut used = std::collections::HashSet::new();
+    let bound: Vec<(usize, usize)> = clip
+        .names
+        .iter()
+        .enumerate()
+        .filter_map(|(t, n)| bone_of.get(n.as_str()).map(|&b| (t, b)))
+        .filter(|&(_, b)| used.insert(b))
+        .collect();
+    if bound.is_empty() {
+        return Err(Error::format(
+            "no bone of the clip is a bone of the model's skeleton",
+        ));
+    }
+    Ok(bound)
+}
+
 /// Appends animation samplers to `bin` and returns accessors, buffer views and the `animations`
 /// JSON member. Accessor 6 and buffer view 6 are the key times, then a translation and a rotation
-/// accessor per bone (bone `b` animates node `b + 2`).
+/// accessor per bound track, in the order of `bound` (bone `b` animates node `b + 2`).
 fn animation_json(
     bin: &mut Vec<u8>,
     clip: &crate::animation::Clip,
     name: &str,
+    bound: &[(usize, usize)],
 ) -> (String, String, String) {
     let frames = usize::from(clip.frames);
     let fps = f32::from(clip.fps.max(1));
@@ -732,7 +777,8 @@ fn animation_json(
     );
     let mut channels = Vec::new();
     let mut samplers = Vec::new();
-    for (b, poses) in clip.tracks.iter().enumerate() {
+    for (n, &(track, bone)) in bound.iter().enumerate() {
+        let poses = &clip.tracks[track];
         for (k, (path, comps)) in [("translation", 3usize), ("rotation", 4)]
             .into_iter()
             .enumerate()
@@ -749,7 +795,7 @@ fn animation_json(
                     }
                 }
             }
-            let view = 7 + 2 * b + k;
+            let view = 7 + 2 * n + k;
             let kind = if comps == 3 { "VEC3" } else { "VEC4" };
             views.push_str(&format!(
                 r#",{{"buffer":0,"byteOffset":{at},"byteLength":{}}}"#,
@@ -764,7 +810,7 @@ fn animation_json(
             ));
             channels.push(format!(
                 r#"{{"sampler":{sampler},"target":{{"node":{},"path":"{path}"}}}}"#,
-                b + 2
+                bone + 2
             ));
         }
     }
@@ -1088,6 +1134,7 @@ mod tests {
             fps: 30,
             frames: 2,
             tracks: vec![vec![pose; 2]; n],
+            names: Vec::new(),
         };
         let glb = g.to_glb_animated(&clip, "Idle").expect("glb");
         let jl = u32::from_le_bytes([glb[12], glb[13], glb[14], glb[15]]) as usize;
@@ -1100,6 +1147,104 @@ mod tests {
             ..clip
         };
         assert!(g.to_glb_animated(&short, "x").is_err());
+    }
+
+    /// A model whose skeleton has the bones `Root`, `Arm`, `Hand` (nodes 2, 3, 4).
+    fn rigged_triangle() -> Geometry {
+        let mut vb = Vec::new();
+        for p in [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 1.0]] {
+            for c in p {
+                vb.extend(c.to_le_bytes());
+            }
+            vb.extend([0u8; 16]);
+            vb.extend([100, 155, 0, 0, 3, 6, 255, 255]);
+        }
+        Geometry {
+            vertex_data: vb,
+            stride: 36,
+            indices: vec![0, 1, 2],
+            tail_block: 0,
+            tail: crate::skeleton::tests::sample(),
+        }
+    }
+
+    fn named_clip(names: &[&str]) -> crate::animation::Clip {
+        let pose = crate::animation::Pose {
+            position: [1.0, 2.0, 3.0],
+            scale: 1.0,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        crate::animation::Clip {
+            fps: 30,
+            frames: 2,
+            tracks: vec![vec![pose; 2]; names.len()],
+            names: names.iter().map(|n| (*n).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_clip_with_fewer_bones_animates_only_those_bones_by_name() {
+        let g = rigged_triangle();
+        let glb = g
+            .to_glb_animated(&named_clip(&["Hand", "Root"]), "Part")
+            .expect("glb");
+        let json = glb_json(&glb);
+        // Two tracks, translation and rotation each, targeting nodes 4 (Hand) and 2 (Root).
+        assert_eq!(json.matches(r#""path":"rotation""#).count(), 2, "{json}");
+        assert!(
+            json.contains(r#""target":{"node":4,"path":"translation"}"#),
+            "{json}"
+        );
+        assert!(
+            json.contains(r#""target":{"node":2,"path":"translation"}"#),
+            "{json}"
+        );
+        assert!(!json.contains(r#""target":{"node":3,"#), "{json}");
+    }
+
+    #[test]
+    fn a_clip_in_another_order_is_bound_by_name_not_by_number() {
+        let g = rigged_triangle();
+        let glb = g
+            .to_glb_animated(&named_clip(&["Hand", "Arm", "Root"]), "Rev")
+            .expect("glb");
+        let json = glb_json(&glb);
+        // The first track is Hand: its channels target node 4.
+        let first = json.find(r#""channels":["#).expect("channels");
+        assert!(
+            json[first..].starts_with(r#""channels":[{"sampler":0,"target":{"node":4,"#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn tracks_for_unknown_bones_are_dropped_and_no_match_is_an_error() {
+        let g = rigged_triangle();
+        let json = glb_json(
+            &g.to_glb_animated(&named_clip(&["Tail", "Arm"]), "x")
+                .expect("glb"),
+        );
+        assert_eq!(json.matches(r#""path":"rotation""#).count(), 1, "{json}");
+        assert!(
+            g.to_glb_animated(&named_clip(&["Tail", "Wing"]), "x")
+                .is_err()
+        );
+        // A repeated name animates the bone once.
+        let json = glb_json(
+            &g.to_glb_animated(&named_clip(&["Arm", "Arm"]), "x")
+                .expect("glb"),
+        );
+        assert_eq!(json.matches(r#""path":"rotation""#).count(), 1, "{json}");
+    }
+
+    #[test]
+    fn a_clip_without_names_keeps_the_by_number_rule() {
+        let g = rigged_triangle();
+        let mut clip = named_clip(&["a", "b", "c"]);
+        clip.names.clear();
+        assert!(g.to_glb_animated(&clip, "x").is_ok());
+        clip.tracks.pop();
+        assert!(g.to_glb_animated(&clip, "x").is_err());
     }
 
     #[test]

@@ -5,6 +5,97 @@ Rule: every new build adds its section here before the archive is made (see [VER
 
 Entries for 0.1.14 to 0.1.44 were rebuilt from the delivery messages of the project chat (2026-11-19); where a message gave no detail the entry says so.
 
+## 0.1.87
+
+### Fixed
+- **Models of client 1.1 were painted white when "textures" was ticked** (bug found by the maintainer in 0.1.85 on the Windows build). Two causes, both found on the real client 1.1.00.41:
+  - The texture was looked up only in the archive of the model, but client 1.1 keeps many textures in other archives (the default Elf skin `ElfFemaleSkin00` is in `BaseLoceng.pak`, the model in `Characters.pak`). Now the texture is looked up by name in all archives of the opened folder: the model's own archive first, then the Russian and English base archives, then the rest by name. `HiRes` and `Mini` archives are skipped. When a single archive was opened, only that archive is searched.
+  - The names from the database are lower case, the names in the 1.1 archives keep their spelling (`Characters/Elf_female/ElfFemaleFaceLower00.(Texture).bin`), and the lookup was case sensitive. Now it ignores case.
+- The error text for a missing resource database no longer says that only client 7.0 is supported.
+
+### Added
+- Tests: texture found in another archive and in any letter case, own archive first, language order, unknown name keeps the old path, lookup stays inside a single opened archive.
+
+### Verified
+- Client 1.1.00.41, all 5 032 `(Geometry).bin` files of the 62 archives that hold models, through `Session::glb_textured` with the whole `Packs` folder open: **before** the fix all 301 models of `Characters`, `Creatures` and `Kania.Client` were white (0 images); **after** the fix 5 029 of 5 032 give a GLB, 4 875 of them with at least one texture (22 099 embedded images), 154 without any texture found, 3 errors. `ElfFemale`: 20 images, 20 texture references (was 0).
+- The 3 errors are models that have no record in `Bin/pack.bin` (`Spells/FX/Mobs/Mushroom.Death` and two more). The 78 map databases hold no `Geometry` records, so a model cannot be described there.
+- 310 tests of `adv-core`, `adv-cli` and `adv-session` pass, `clippy -D warnings` and `fmt` clean (rustc 1.100.0, Linux).
+
+### Not verified
+- The pictures on the screen: the check counts the images and references in the exported file, it does not show the model. The Windows build and the app window (the maintainer's "error" when ticking the box could not be reproduced except for the 3 models above; the exact message and the model path would help).
+- Why 154 models get no texture (`World_Races_Pirates` 20 of 27, `Spells` 87, `World_Races_Kania` 15): not analysed; the textures may be in archives this client release does not have, or the elements may have no diffuse texture.
+- 32-bit index buffers (`vb32`) in the textured export, material tracks in the viewer.
+
+## 0.1.86
+
+### Changed
+- Animated glTF export binds clip tracks to the bones of the model **by name**. `Clip` has a new field `names` (the bone name of every track; empty when the clip has no usable name table). Bones without a track keep their bind pose, tracks without a bone are dropped, a repeated name animates the bone once, and no matching bone is an error. A clip without names keeps the old rule (one track per bone, skeleton order). Before, a clip with another bone count was rejected and a clip with the same bones in another order was bound to the wrong bones.
+- `docs/formats/skeletal-animation.md` (section on binding), `docs/SUPPORTED-VERSIONS.md`, `docs/PORTING-PLAN.md`.
+
+### Added
+- Tests: clip with fewer bones, clip in another order, unknown and repeated names, no match, clip without names (by-number rule kept).
+
+### Verified
+- Client 1.1.00.41, all 5 776 clips of `Characters.pak` and `Creatures.pak` against the skeleton names of the geometry in their folder: identical names and order 4 233; same set, other order 36; fewer bones in skeleton order 1 491; one clip with a name not in the skeleton. So 1 527 clips (26 %) cannot be bound by number.
+- End to end with the geometry of the folder: 5 716 of 5 761 clips give an animated GLB, 444 294 of 452 531 skeleton bones animated in those files.
+- 308 tests of `adv-core`, `adv-cli` and `adv-session` pass, `clippy -D warnings` and `fmt` clean (rustc 1.100.0, Linux).
+
+### Not verified
+- The look of the animated models in a viewer; playback of material tracks in the viewer (still only the reader and `adv anim`).
+- Known limit, not new: 45 clips of `Creatures/EvilEyeBoss` (9) and `Creatures/GolemJunes` (36) give no animated GLB because 2 bones of each model have a mirrored (reflection) local rotation, which the GLB writer rejects.
+- Windows build.
+
+## 0.1.85
+
+### Added
+- `animation::bone_names`: the names of the bone tracks of a clip. `animation::material_tracks`: the material tracks (transparency as the amount removed, U and V texture shift as fractions of a turn), one sample per frame; unflagged channels are 0.
+- `adv anim <clip> [--json]`: frame rate, frames, bone names and the material tracks of a clip.
+- Tests: names (read, wrong count, no table), material tracks (all channels, one channel, no tracks, bad flags, wrong size, float payload), truncated clips never panic, `adv anim` text, JSON and error exit.
+
+### Changed
+- `docs/formats/skeletal-animation.md`, `docs/SUPPORTED-VERSIONS.md`, `docs/PORTING-PLAN.md`: client 1.1.00.41 animation facts.
+
+### Verified
+- Client 1.1.00.41: all 5 776 clips of `Characters.pak` and `Creatures.pak` decode (336 449 frames, 453 266 bone tracks) and have a name for every bone track; 289 of them (68 424 poses) agree with the Python exporter (largest difference 2.3e-6 for positions, quaternion `|dot|` at least 0.9999992); 32 clips have material tracks (111 tracks), 57 samples of 6 clips agree with the exporter (3.7e-7).
+- 304 tests of `adv-core`, `adv-cli` and `adv-session` pass, `clippy -D warnings` and `fmt` clean (rustc 1.100.0, Linux).
+
+### Not verified
+- That track `i` is bone `i` of the model's skeleton on client 1.1; playback of material tracks in the viewer (not implemented yet, only the reader); the `nameOrder` array; Windows build.
+
+## 0.1.84
+
+### Changed
+- Rust toolchain 1.100 instead of 1.99: `rust-toolchain.toml`, `rust-version` in `Cargo.toml`, README (both languages), INSTALL, BUILD-WINDOWS, CLAUDE, CORE-DESIGN. No code changes. Decision D-018.
+
+### Verified
+- On rustc 1.100.0 (Linux sandbox, conda-forge build): `cargo fmt --check` and `cargo clippy --locked -D warnings` clean, 298 tests of `adv-core`, `adv-cli`, `adv-session` pass.
+
+### Not verified
+- A build on Windows with the toolchain that rustup downloads for `1.100` (first run needs the network); the desktop crate (`adv-desktop`) on any platform from this sandbox.
+
+## 0.1.83
+
+### Added
+- Core module `version`: a table of known resource-database signatures (client 1.1.00.41, 1.1.02.0, 1.1.04.44, 3.0, 4.0.02, 7.0.00, Cloud Pirates 1.7.7, 14.0.00.21, 14.0.01.71, 17.0.01.55) and `identify`, which reads the signature of a database (zlib or plain) from its first bytes in both the 32-bit and the 64-bit layout. Rows from the EditorTools table are marked as not checked on our files.
+- Model elements of client 1.1: `binding::ElementLayout` (`V7_0`, `CLIENT_1_1`), `read_geometry_with`, `all_geometries_with`. The app picks the layout from the signature of `pack.bin`; unknown signatures keep the 7.0 layout, so 7.0 behaves as before. Client 1.1 models now get their texture per element (diffuse only; `material.params` is not read).
+- `adv db find` also finds databases of the 32-bit layout and prints the client name as a fifth column (`unknown` for a signature not in the table).
+- `docs/PORTING-PLAN.md`: audit of the community tools (resource exporter, EditorTools, DatabaseUnpacker, blender-import, AODataViewer, AOUIEditor, AllodsV4_Developer) and a plan to port their functions.
+- Tests: signature registry (consistency, zlib and plain, unknown, 64-bit, rejects), client 1.1 element layout (own field order, truncated image, bad sizes, layout by family), `adv db find` on a 32-bit database.
+
+### Changed
+- `docs/SUPPORTED-VERSIONS.md`, `docs/formats/model-binding.md`, `docs/formats/bin-db.md`: client 1.1.00.41 facts (see below), REFERENCES entry for the MIT resource exporter, FBX export put in the backlog.
+
+### Verified
+- On the client release 1.1.00.41 (Bin.pak): all 79 databases carry the signature `2419FD3C1B6C738A` (`adv db find` printed 79 rows); 5 189 Geometry records, 5 186 with elements, 39 585 elements, 38 675 with a diffuse texture, identical to an independent Python reader; for `ElfFemale` the ranges and textures of elements 0, 19 and 23 are identical.
+- The `vb32` flag of `Geometry` lies at +60 (32 of 5 189 records, 30 of them with more than 65 535 vertices); the byte at +329 that the Python exporter tests is 0 everywhere.
+- 1 834 of 2 280 `.bin` textures match their `Texture` record (DXT1 633, DXT5 1 201).
+- 298 tests pass in `adv-core`, `adv-cli` and `adv-session` on Linux (rustc 1.100, the project pins 1.99); `cargo clippy -D warnings` and `cargo fmt` are clean. This includes the dependabot updates merged from `main` (clap 4.6.9, tauri 2.12.7, rusty_mp3 1.2.0, i18next 27.2.3, vitest 5.1.1).
+
+### Not verified
+- The textured 1.1 models in the real window on Windows; the desktop crate (`adv-desktop`) was not compiled here (no WebKit libraries).
+- 32-bit index buffers (`vb32`) in the geometry reader; `material.params` of 1.1; the 446 textures whose records are probably in `Maps_*.bin`; texture type 3 of client 1.1 (79 records, probably RGBA as in the 7.0 layout).
+- Signatures taken from the EditorTools table were not compared with files of those clients.
+
 ## 0.1.82
 
 ### Fixed

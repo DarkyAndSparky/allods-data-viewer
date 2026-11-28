@@ -273,6 +273,8 @@ struct OpenPak {
 const MAX_TEXTURE_PNG: usize = 16 * 1024 * 1024;
 
 type TextureSizes = HashMap<String, (u32, u32)>;
+/// Texture files of all archives: lower-case path inside the archive to (archive, real path).
+type TextureIndex = HashMap<String, Vec<(PathBuf, String)>>;
 type ModelBindings = HashMap<String, Vec<adv_core::binding::ElementBinding>>;
 
 /// An opened data folder or single archive.
@@ -290,6 +292,10 @@ pub struct Session {
     texdbs: Mutex<HashMap<String, Arc<TextureSizes>>>,
     /// Model elements and their textures from the 7.0 pack, by lower-case `…(Geometry).xdb`.
     bindings: Mutex<Option<Arc<ModelBindings>>>,
+    /// Every `(Texture).bin` of every archive of the folder, built on first use. A model's
+    /// texture may lie in another archive than the model (client 1.1 keeps the default skins in
+    /// `BaseLoc*.pak`).
+    tex_index: std::sync::OnceLock<TextureIndex>,
     /// The video the player is reading (virtual path and decoder), so frames come in order.
     video: Mutex<Option<(String, adv_core::video::VideoStream)>>,
 }
@@ -330,6 +336,25 @@ fn collect_base_paks(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
 
 /// `.pak` archives, plain `.zip` files (mods, add-ons), `.tar`, `.tar.gz`, `.tgz` and `.gz` files
 /// are entered like folders.
+/// Collects every `.pak` below `dir` (up to three levels deep) except the HiRes and Mini variants.
+fn collect_all_paks(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
+    if depth > 3 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+        if p.is_dir() {
+            collect_all_paks(&p, depth + 1, out);
+        } else if name.ends_with(".pak") && !name.contains("hires") && !name.contains("mini") {
+            out.push(p);
+        }
+    }
+}
+
 fn is_pak(name: &str) -> bool {
     Kind::from_name(name).is_some()
 }
@@ -379,6 +404,7 @@ impl Session {
             base_pak: std::sync::OnceLock::new(),
             texdbs: Mutex::new(HashMap::new()),
             bindings: Mutex::new(None),
+            tex_index: std::sync::OnceLock::new(),
         };
         if let Some(name) = &session.only {
             if !is_pak(name) {
@@ -1034,9 +1060,14 @@ impl Session {
         drop(raw);
         if layout == db::Layout::Bits32 {
             let db = db32::parse(&data, &self.limits).ok()?;
+            let layout = adv_core::binding::ElementLayout::for_family(
+                adv_core::version::identify(&data)
+                    .map_or(adv_core::version::Family::Other, |i| i.family()),
+            );
             if entry.eq_ignore_ascii_case("Bin/pack.bin")
                 && let Ok(fx) = adv_core::fixes::parse_fixes(&data, db.data.end, &self.limits)
-                && let Ok(map) = adv_core::binding::all_geometries(&db, &data, &fx, &self.limits)
+                && let Ok(map) =
+                    adv_core::binding::all_geometries_with(&layout, &db, &data, &fx, &self.limits)
                 && let Ok(mut slot) = self.bindings.lock()
             {
                 *slot = Some(Arc::new(map));
@@ -1239,7 +1270,7 @@ impl Session {
         drop(self.texture_db("pack", "Bin/pack.bin"));
         let map = self.bindings.lock().ok().and_then(|g| g.clone()).ok_or_else(|| {
             SessionError::NotFound(
-                "no resource database with model bindings: open the client folder that holds BaseLoc*.pak (Bin/pack.bin), only client 7.0 is supported"
+                "no resource database with model bindings: open the client folder that holds the resource database (Bin/pack.bin in BaseLoc*.pak or Bin.pak); client 7.0 and client 1.1 are supported"
                     .to_owned(),
             )
         })?;
@@ -1263,8 +1294,82 @@ impl Session {
         }
     }
 
+    /// The index of all texture files of the folder (see [`Session::tex_index`]).
+    fn texture_index(&self) -> &TextureIndex {
+        self.tex_index.get_or_init(|| {
+            let mut files = Vec::new();
+            match &self.only {
+                Some(name) => files.push(self.root.join(name)),
+                None => collect_all_paks(&self.root, 0, &mut files),
+            }
+            files.sort();
+            let mut index = TextureIndex::new();
+            for file in files {
+                let entries: Vec<String> = self
+                    .with_pak(&file, |o| {
+                        Ok(o.pak
+                            .entries()
+                            .iter()
+                            .map(|e| e.path.as_str().to_owned())
+                            .filter(|p| p.to_ascii_lowercase().ends_with(".(texture).bin"))
+                            .collect())
+                    })
+                    .unwrap_or_default();
+                for real in entries {
+                    index
+                        .entry(real.to_ascii_lowercase())
+                        .or_default()
+                        .push((file.clone(), real));
+                }
+            }
+            index
+        })
+    }
+
+    /// Virtual path of the texture `stem` (the resource name without `.(texture).xdb`, any case).
+    ///
+    /// The archive of the model (`prefix` ends with its name) comes first, then the Russian and
+    /// English base archives, then the rest by name. Lookups ignore case, as the names in the
+    /// database are lower case while the archives keep the original spelling. Without a hit in
+    /// any archive the name is tried as a loose file next to the model.
+    fn texture_vpath(&self, prefix: &str, stem: &str) -> String {
+        let want = format!("{stem}.(texture).bin").to_ascii_lowercase();
+        let own = prefix
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if let Some(list) = self.texture_index().get(&want) {
+            let rank = |file: &Path| {
+                let n = file
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_ascii_lowercase())
+                    .unwrap_or_default();
+                let lang = if n.contains("rus") {
+                    1u8
+                } else if n.contains("eng") {
+                    2
+                } else {
+                    3
+                };
+                (u8::from(n != own), lang, n)
+            };
+            if let Some((file, real)) = list.iter().min_by_key(|(f, _)| rank(f)) {
+                let rel = file.strip_prefix(&self.root).unwrap_or(file);
+                let rel: Vec<String> = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect();
+                return format!("{}/{real}", rel.join("/"));
+            }
+        }
+        format!("{prefix}{stem}.(Texture).bin")
+    }
+
     /// The model as a binary glTF file with the textures of its elements and, optionally, one
-    /// animation clip. Textures are looked up next to the model, in the same archive.
+    /// animation clip. Textures are looked up by name in all archives of the folder (the model's
+    /// own archive first).
     ///
     /// # Errors
     ///
@@ -1313,7 +1418,7 @@ impl Session {
                         .entry(name.to_owned())
                         .or_insert_with(|| {
                             let stem = name.strip_suffix(".(texture).xdb")?;
-                            let path = format!("{prefix}{stem}.(Texture).bin");
+                            let path = self.texture_vpath(prefix, stem);
                             match self.preview(&path, Options::default()).ok()? {
                                 Preview::Image { png, .. } if png.len() <= MAX_TEXTURE_PNG => {
                                     Some(png)
@@ -2115,6 +2220,69 @@ mod tests {
         }
         out.extend_from_slice(&[0u8; 1024]);
         out
+    }
+
+    #[test]
+    fn textures_are_found_in_other_archives_and_in_any_letter_case() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let root = dir.path();
+        // The model lies in A.pak; the skin only in BaseLoceng.pak, spelled in mixed case.
+        pak(&root.join("A.pak"), &[("Chars/Hero.(Geometry).bin", b"g")]);
+        pak(
+            &root.join("BaseLoceng.pak"),
+            &[("Chars/HeroSkin.(Texture).bin", b"t")],
+        );
+        pak(
+            &root.join("Zeta.pak"),
+            &[
+                ("Chars/HeroSkin.(Texture).bin", b"t"),
+                ("Chars/Hat.(Texture).bin", b"t"),
+            ],
+        );
+        let s = Session::open(root).expect("open");
+        // Names from the database are lower case; the English base archive beats `Zeta.pak`.
+        assert_eq!(
+            s.texture_vpath("A.pak/", "chars/heroskin"),
+            "BaseLoceng.pak/Chars/HeroSkin.(Texture).bin"
+        );
+        assert_eq!(
+            s.texture_vpath("A.pak/", "chars/hat"),
+            "Zeta.pak/Chars/Hat.(Texture).bin"
+        );
+        // A texture of the model's own archive comes first.
+        pak(
+            &root.join("A.pak"),
+            &[
+                ("Chars/Hero.(Geometry).bin", b"g"),
+                ("Chars/HeroSkin.(Texture).bin", b"t"),
+            ],
+        );
+        let s = Session::open(root).expect("open");
+        assert_eq!(
+            s.texture_vpath("A.pak/", "chars/heroskin"),
+            "A.pak/Chars/HeroSkin.(Texture).bin"
+        );
+        // Unknown name: the old same-folder path is returned (a loose file may be there).
+        assert_eq!(
+            s.texture_vpath("A.pak/", "chars/none"),
+            "A.pak/chars/none.(Texture).bin"
+        );
+    }
+
+    #[test]
+    fn texture_lookup_stays_inside_a_single_opened_archive() {
+        let dir = tempfile::tempdir().expect("tmp");
+        pak(&dir.path().join("A.pak"), &[("X/One.(Texture).bin", b"t")]);
+        pak(&dir.path().join("B.pak"), &[("X/Two.(Texture).bin", b"t")]);
+        let s = Session::open(&dir.path().join("A.pak")).expect("open");
+        assert_eq!(
+            s.texture_vpath("A.pak/", "x/one"),
+            "A.pak/X/One.(Texture).bin"
+        );
+        assert_eq!(
+            s.texture_vpath("A.pak/", "x/two"),
+            "A.pak/x/two.(Texture).bin"
+        );
     }
 
     #[test]

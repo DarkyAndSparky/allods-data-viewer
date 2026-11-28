@@ -1,6 +1,6 @@
 # Model to texture binding (7.0 pack)
 
-Status: `draft`. Checked on `Warlock` and `ArchdemonMage` (client 7.0, `Bin/pack.bin`, Bits32).
+Status: `draft`. Checked on `Warlock` and `ArchdemonMage` (client 7.0, `Bin/pack.bin`, Bits32) and, for client 1.1.00.41, on the whole pack (see below).
 The 18.0 (64-bit) layout is not read yet.
 
 ## Where the binding lives
@@ -44,3 +44,31 @@ the Texture resource (`…(Texture).xdb`), and the picture is the `.bin` of the 
 - How the effect mask, reflection and contour textures are combined by the game shader (the glTF export uses only the diffuse texture; no standard glTF slot fits them). No element in the pack has a bump texture.
 - LOD 1 and 2 ranges are read from the same structure but not used.
 - Skinned (`skinIndex`, `virtualOffset`) element data.
+
+## Client 1.1 (record layout `V1_1_02_0`)
+
+The 1.1 records are smaller and the fields lie elsewhere. The reader picks the layout from the
+signature of the database (`adv-core::version`, `ElementLayout::for_family`); an unknown signature
+keeps the 7.0 layout, so nothing that worked before changes.
+
+| Field | Offset | Note |
+|---|---|---|
+| `modelElements` array | `root + 180` (pointer), `root + 184` (byte size) | element size 112 bytes |
+| element `lods` array | element `+ 96` (pointer), `+ 100` (byte size) | `Lod` is 20 bytes |
+| `Lod` | `+4` vertex end, `+8` vertex begin, `+12` index end, `+16` index begin | the order differs from 7.0 |
+| element `material.diffuseTexture` | element `+ 84` | pointer, fix tag 0 |
+| element `material.params` | element `+ 80` | nullable pointer; **not read** |
+| `Geometry.vb32` (32-bit indices) | `root + 60` | the byte at `root + 329` is not this flag |
+| `Geometry` record size | 400 bytes | |
+
+Sources: the 1.1.02.0 structs of AllodsOnlineEditorTools (MIT) and the MIT Python exporter agree on
+all of these, except that the exporter tests the byte at +329 for `vb32`; on the 1.1.00.41 database
+that byte is 0 in all 5 189 records while the byte at +60 is 1 in 32 records (30 of them have more
+than 65 535 vertices), so +60 is the flag.
+
+Verified (2026-11-26, client 1.1.00.41 `Bin/pack.bin`): 5 189 Geometry records, 5 186 with elements,
+39 585 elements, 38 675 with a diffuse texture. The Rust reader and an independent Python reader
+give the same totals, and for `ElfFemale` (54 elements) the same index and vertex ranges and
+the same texture names (checked on elements 0, 19 and 23). Nine elements have a `lods` array whose
+byte size is not a multiple of 20; the Python reader rejects them, the Rust reader reads the first
+entry. Not checked: the look of the textured models, the material scroll and transparency fields.

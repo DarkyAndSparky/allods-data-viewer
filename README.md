@@ -35,7 +35,7 @@ This guide takes you from "I downloaded the source code" to "the app window is r
 
 | Tool | Why | Version |
 |---|---|---|
-| Rust | compiles the application | 1.99 (installed automatically by the project) |
+| Rust | compiles the application | 1.100 (installed automatically by the project) |
 | Microsoft C++ Build Tools (MSVC) | linker and compiler Rust needs on Windows | any current version |
 | Node.js | builds the web interface | **26 or newer** |
 | WebView2 Runtime | draws the app window | normally already in Windows 10/11 |
@@ -67,7 +67,7 @@ If you already have Visual Studio with the "Desktop development with C++" worklo
 2. Run it and choose **1) Proceed with standard installation**.
 3. Close the window when it says Rust is installed.
 
-You do not need to pick a Rust version: the file `rust-toolchain.toml` in the project pins 1.99, and rustup downloads it automatically on the first build.
+You do not need to pick a Rust version: the file `rust-toolchain.toml` in the project pins 1.100, and rustup downloads it automatically on the first build.
 
 ### Step 4. Install Node.js
 
@@ -216,7 +216,7 @@ Choose **1) Proceed with standard installation**, then load Rust into the curren
 . "$HOME/.cargo/env"
 ```
 
-The project pins Rust 1.99 in `rust-toolchain.toml`; rustup downloads it automatically on the first build.
+The project pins Rust 1.100 in `rust-toolchain.toml`; rustup downloads it automatically on the first build.
 
 ### L4. Install Node.js 26 or newer
 
@@ -296,7 +296,7 @@ bash ./scripts/check-all.sh
 
 ## Develop and test
 
-Requirements: [Rust](https://rustup.rs) (stable, 1.99 or newer) and [Node.js](https://nodejs.org) 26 or newer (LTS).
+Requirements: [Rust](https://rustup.rs) (stable, 1.100 or newer) and [Node.js](https://nodejs.org) 26 or newer (LTS).
 On Windows Rust also needs the Microsoft C++ Build Tools.
 
 ```
